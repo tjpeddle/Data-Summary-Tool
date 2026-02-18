@@ -14,26 +14,26 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}body{background:#0a0e1a;color:#e2e6f0;font-family:'Outfit',sans-serif;overflow:hidden}
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:#0a0e1a}::-webkit-scrollbar-thumb{background:#2a3152;border-radius:4px}
-input[type="file"]{display:none}@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}.fade-up{animation:fadeUp .45s cubic-bezier(.22,1,.36,1) both}
-.stat-card{transition:all .25s cubic-bezier(.22,1,.36,1)}.stat-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(56,120,255,.1);border-color:#3878ff44!important}
+input[type="file"]{display:none}.fade-up{animation:fadeUp .45s cubic-bezier(.22,1,.36,1) both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.stat-card{transition:all .25s}.stat-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(56,120,255,.1)}
 table{border-collapse:collapse;width:100%}th,td{padding:11px 16px;text-align:left;border-bottom:1px solid #1e2542;font-size:13px}
 th{background:#0d1124;color:#7a84a6;font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:.07em;position:sticky;top:0;z-index:2}tr:hover td{background:#151d38}
 .btn{padding:10px 22px;border-radius:10px;border:none;cursor:pointer;font-weight:600;font-size:13.5px;transition:all .2s;font-family:inherit}
-.btn-primary{background:linear-gradient(135deg,#3878ff,#5c6bff);color:#fff;box-shadow:0 4px 16px rgba(56,120,255,.25)}.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(56,120,255,.35)}
+.btn-primary{background:linear-gradient(135deg,#3878ff,#5c6bff);color:#fff;box-shadow:0 4px 16px rgba(56,120,255,.25)}.btn-primary:hover{transform:translateY(-1px)}
 .btn-outline{background:transparent;border:1.5px solid #2a3152;color:#c0c8e0}.btn-outline:hover{border-color:#3878ff;color:#3878ff}
 .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}.badge-green{background:#22c58d18;color:#22c58d}.badge-red{background:#ef575718;color:#ef5757}
 select{outline:none}button:disabled{opacity:.35;cursor:not-allowed}canvas{max-width:100%!important}
 .gen-section{background:#111630;border-radius:14px;border:1px solid #1e2542;padding:20px;margin-bottom:16px}
 .gen-label{font-size:12px;color:#7a84a6;font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
-.gen-input{width:100%;background:#0a0e1a;border:1.5px solid #1e2542;border-radius:8px;padding:10px 14px;color:#e2e6f0;font-family:inherit;font-size:14px;resize:vertical}
-.gen-input:focus{outline:none;border-color:#3878ff}
+.gen-input{width:100%;background:#0a0e1a;border:1.5px solid #1e2542;border-radius:8px;padding:10px 14px;color:#e2e6f0;font-family:inherit;font-size:14px;resize:vertical}.gen-input:focus{outline:none;border-color:#3878ff}
+.chip{display:inline-flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;border:1.5px solid #2a3152;background:transparent;color:#c0c8e0}
+.chip.active{background:#3878ff22;border-color:#3878ff;color:#3878ff}.chip:hover{border-color:#3878ff}
 </style>
 </head>
 <body>
 <div id="root"></div>
-<!-- Hidden container for rendering charts to PNG for the Word doc -->
 <div id="chart-render-area" style="position:absolute;left:-9999px;top:-9999px;"></div>
-
 <script type="text/babel">
 const{useState,useMemo,useRef,useEffect}=React;
 
@@ -42,11 +42,18 @@ function parseCSV(t){const l=t.split(/\r?\n/).filter(l=>l.trim());if(!l.length)r
 function ssplit(l){const r=[];let c="",q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(ch==='"')q=!q;else if(ch===","&&!q){r.push(c);c=""}else c+=ch}r.push(c);return r}
 async function parseExcel(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}))}catch(err){rej(err)}};r.onerror=rej;r.readAsArrayBuffer(f)})}
 async function parseFile(f){if(f.name.endsWith(".csv"))return parseCSV(await f.text());return parseExcel(f)}
-function dlXLSX(rows,fn){if(!rows.length)return;const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Report");const hdr=Object.keys(rows[0]);ws['!cols']=hdr.map(h=>{let mx=h.length;rows.forEach(r=>{const v=(r[h]||"").toString();if(v.length>mx)mx=v.length});return{wch:Math.min(mx+3,50)}});XLSX.writeFile(wb,fn)}
+function dlXLSX(rows,fn){if(!rows.length)return;const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Report");XLSX.writeFile(wb,fn)}
 
 const CO={bg:"#0a0e1a",card:"#111630",border:"#1e2542",accent:"#3878ff",accentSoft:"#3878ff18",green:"#22c58d",red:"#ef5757",yellow:"#f0b429",orange:"#f08c3a",purple:"#8b6cff",text:"#e2e6f0",muted:"#7a84a6",dim:"#4a5272"};
 const UG=["Freshman","Sophomore","Junior","Senior"];
-const CCOL=["#3878ff","#8b6cff","#22c58d","#f0b429","#f08c3a","#ef5757","#e05db0","#5cc9f5","#a3e048","#ff6b8a"];
+const PALETTES={
+  Default:["#22c58d","#ef5757","#3878ff","#8b6cff","#f0b429","#f08c3a","#e05db0","#5cc9f5","#a3e048","#ff6b8a","#45d0e0","#ffb347"],
+  Professional:["#2563eb","#dc2626","#059669","#d97706","#7c3aed","#db2777","#0891b2","#65a30d","#c2410c","#4f46e5","#0d9488","#a21caf"],
+  Soft:["#93c5fd","#fca5a5","#86efac","#fde68a","#c4b5fd","#fbcfe8","#99f6e4","#fef08a","#fed7aa","#a5b4fc","#a7f3d0","#f9a8d4"],
+  Warm:["#f97316","#ef4444","#eab308","#f59e0b","#dc2626","#fb923c","#fbbf24","#d97706","#c2410c","#ea580c","#ca8a04","#b91c1c"],
+  Cool:["#3b82f6","#06b6d4","#8b5cf6","#6366f1","#0ea5e9","#14b8a6","#a78bfa","#2dd4bf","#818cf8","#22d3ee","#7c3aed","#0891b2"],
+  Earth:["#92400e","#166534","#854d0e","#1e3a5f","#7c2d12","#365314","#78350f","#1e40af","#9a3412","#15803d","#a16207","#1d4ed8"],
+};
 
 function normCL(cl){if(!cl)return"";const l=cl.trim().toLowerCase();if(l.includes("fresh"))return"Freshman";if(l.includes("soph"))return"Sophomore";if(l.includes("jun"))return"Junior";if(l.includes("sen"))return"Senior";if(l.includes("grad")&&!l.includes("incoming"))return"Graduate";if(l.includes("doct"))return"Doctoral";if(l.includes("alum"))return"Alumni";if(l.includes("exchange"))return"Exchange Program";if(l.includes("incoming"))return"Incominggr";return cl.trim()}
 function isH(a){if(!a)return false;const l=a.toLowerCase();return l.includes("housing accommodation")||l.includes("emotional support animal")||l.includes("service animal")||l.includes("accessible transportation")}
@@ -60,54 +67,35 @@ function bSum(data,fS,sS,cFn){
   return Object.values(acc).map(a=>({name:a.name,fallApproved:a.fA.size,fallDenied:a.fD.size,springApproved:a.sA.size,springDenied:a.sD.size,totalUnique:a.tot.size,calApproved:a.yA.size,calDenied:a.yD.size})).sort((a,b)=>b.totalUnique-a.totalUnique);
 }
 
-/* ═══ RENDER CHART TO PNG (offscreen) ═══ */
-function renderChartToPNG(type, data, options, width, height){
+function renderChartToPNG(type,data,options,width,height){
   return new Promise((resolve)=>{
-    const area = document.getElementById('chart-render-area');
-    const canvas = document.createElement('canvas');
-    canvas.width = width; canvas.height = height;
-    area.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
-    const defaults = {responsive:false,animation:false,
-      plugins:{legend:{labels:{color:"#333",font:{family:"Arial",size:13,weight:'bold'},padding:14}},
-        tooltip:{enabled:false}},
-      scales:type==='pie'||type==='doughnut'?{}:{
-        x:{ticks:{color:"#444",font:{family:"Arial",size:12}},grid:{color:"#ddd"}},
-        y:{ticks:{color:"#444",font:{family:"Arial",size:12}},grid:{color:"#ddd"}}}};
-    const merged = {...defaults,...options,plugins:{...defaults.plugins,...(options?.plugins||{})}};
-    const chart = new Chart(ctx,{type,data,options:merged});
-    setTimeout(()=>{
-      const dataUrl = canvas.toDataURL('image/png');
-      const base64 = dataUrl.split(',')[1];
-      chart.destroy();
-      area.removeChild(canvas);
-      resolve(base64);
-    }, 300);
+    const area=document.getElementById('chart-render-area');const canvas=document.createElement('canvas');
+    canvas.width=width;canvas.height=height;area.appendChild(canvas);
+    const defaults={responsive:false,animation:false,plugins:{legend:{labels:{color:"#333",font:{family:"Arial",size:13,weight:'bold'},padding:14}},tooltip:{enabled:false}},scales:type==='pie'||type==='doughnut'?{}:{x:{ticks:{color:"#444",font:{family:"Arial",size:12}},grid:{color:"#ddd"}},y:{ticks:{color:"#444",font:{family:"Arial",size:12}},grid:{color:"#ddd"}}}};
+    const merged={...defaults,...options,plugins:{...defaults.plugins,...(options?.plugins||{})}};
+    const chart=new Chart(canvas.getContext('2d'),{type,data,options:merged});
+    setTimeout(()=>{const b64=canvas.toDataURL('image/png').split(',')[1];chart.destroy();area.removeChild(canvas);resolve(b64)},350);
   });
 }
 
-/* ═══ CHART COMPONENT (for on-screen display) ═══ */
-function MyChart({type,data,options,height=280}){
+function PChart({type,data,options,height=260}){
   const ref=useRef();const ch=useRef();
   useEffect(()=>{if(ch.current)ch.current.destroy();
-    const dOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:CO.muted,font:{family:"'Outfit'",size:12},padding:16}},tooltip:{backgroundColor:"#1a2248",titleColor:CO.text,bodyColor:CO.muted,borderColor:CO.border,borderWidth:1,cornerRadius:8,padding:12}},scales:type==='pie'||type==='doughnut'?{}:{x:{ticks:{color:CO.dim,font:{family:"'Outfit'",size:11}},grid:{color:"#1a2040"}},y:{ticks:{color:CO.dim,font:{family:"'Outfit'",size:11}},grid:{color:"#1a2040"}}}};
-    const m={...dOpts,...options,plugins:{...dOpts.plugins,...(options?.plugins||{})}};
+    const dO={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:CO.muted,font:{family:"'Outfit'",size:12},padding:14}},tooltip:{backgroundColor:"#1a2248",titleColor:CO.text,bodyColor:CO.muted,cornerRadius:8,padding:12}},scales:type==='pie'||type==='doughnut'?{}:{x:{ticks:{color:CO.dim,font:{family:"'Outfit'",size:11}},grid:{color:"#1a2040"}},y:{ticks:{color:CO.dim,font:{family:"'Outfit'",size:11}},grid:{color:"#1a2040"}}}};
+    const m={...dO,...options,plugins:{...dO.plugins,...(options?.plugins||{})}};
     ch.current=new Chart(ref.current.getContext('2d'),{type,data,options:m});
     return()=>{if(ch.current)ch.current.destroy()};
-  },[type,JSON.stringify(data)]);
+  },[type,JSON.stringify(data),JSON.stringify(options)]);
   return <div style={{position:"relative",height}}><canvas ref={ref}/></div>;
 }
 
-/* ═══ SMALL COMPONENTS ═══ */
-function SC({label,value,sub,color=CO.accent,icon,delay=0}){
-  return(<div className="stat-card fade-up" style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:"20px 24px",animationDelay:`${delay}s`}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-      <div><p style={{fontSize:11.5,color:CO.muted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8,fontWeight:500}}>{label}</p>
-        <p style={{fontSize:30,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color,lineHeight:1}}>{typeof value==="number"?value.toLocaleString():value}</p>
-        {sub&&<p style={{fontSize:12,color:CO.muted,marginTop:6}}>{sub}</p>}</div>
-      {icon&&<span style={{fontSize:26,opacity:.2}}>{icon}</span>}</div></div>);
+function SC({label,value,sub,color=CO.accent,icon}){
+  return(<div className="stat-card" style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:"20px 24px"}}>
+    <p style={{fontSize:11.5,color:CO.muted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8,fontWeight:500}}>{label}</p>
+    <p style={{fontSize:30,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color,lineHeight:1}}>{typeof value==="number"?value.toLocaleString():value}</p>
+    {sub&&<p style={{fontSize:12,color:CO.muted,marginTop:6}}>{sub}</p>}</div>);
 }
-function Empty({msg}){return<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:400,opacity:.5}}><div style={{fontSize:52,marginBottom:16}}>◇</div><p style={{fontSize:16,color:CO.muted}}>{msg||"No data loaded. Go to Import Data to get started."}</p></div>}
+function Empty({msg}){return<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:400,opacity:.5}}><p style={{fontSize:16,color:CO.muted}}>{msg||"No data loaded. Import data first."}</p></div>}
 
 /* ═══ IMPORT TAB ═══ */
 function ImportTab({rawData,setRawData,testRoomData,setTestRoomData,iSt,setISt,ld,setLd}){
@@ -117,329 +105,236 @@ function ImportTab({rawData,setRawData,testRoomData,setTestRoomData,iSt,setISt,l
     if(type==="raw")setRawData(norm);else setTestRoomData(norm);setISt(s=>({...s,[type]:{ok:true,ct:norm.length,fn:file.name}}));}catch(err){setISt(s=>({...s,[type]:{ok:false,err:err.message}}))}setLd(false)};
   return(<div className="fade-up">
     <h2 style={{fontSize:26,fontWeight:800,marginBottom:8}}>Import Your Data</h2>
-    <p style={{color:CO.muted,marginBottom:32,maxWidth:620,lineHeight:1.6}}>Upload your raw accommodation data and test room booking exports. Accepts <strong style={{color:CO.text}}>.xlsx, .xlsm, .xls, and .csv</strong> files.</p>
+    <p style={{color:CO.muted,marginBottom:32}}>Upload .xlsx, .xlsm, .xls, or .csv files.</p>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,maxWidth:920}}>
-      {[{t:"raw",ref:rR,icon:"↑",col:CO.accent,title:"Raw Accommodation Data",sub:"Student accommodations export",cols:"Name, Student ID, Class Level, Requested Accommodation, Approved, Semester (course)"},
-        {t:"test",ref:tR,icon:"✎",col:CO.purple,title:"Test Room Bookings",sub:"Standard report export",cols:"Student, Course (Object), Exam, Appointment Cancelled, Semester"}
+      {[{t:"raw",ref:rR,icon:"↑",col:CO.accent,title:"Raw Accommodation Data",cols:"Name, Student ID, Class Level, Requested Accommodation, Approved, Semester (course)"},
+        {t:"test",ref:tR,icon:"✎",col:CO.purple,title:"Test Room Bookings",cols:"Student, Course (Object), Exam, Appointment Cancelled, Semester"}
       ].map(c=>(<div key={c.t} style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:28}}>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
-            <div style={{width:40,height:40,borderRadius:10,background:`${c.col}18`,display:"flex",alignItems:"center",justifyContent:"center",color:c.col,fontSize:18,fontWeight:700}}>{c.icon}</div>
-            <div><h3 style={{fontSize:16,fontWeight:700}}>{c.title}</h3><p style={{fontSize:12,color:CO.muted}}>{c.sub}</p></div></div>
-          <p style={{fontSize:12.5,color:CO.muted,marginBottom:18,lineHeight:1.7}}>Columns: <strong style={{color:CO.text}}>{c.cols}</strong></p>
+          <h3 style={{fontSize:16,fontWeight:700,marginBottom:12}}>{c.icon} {c.title}</h3>
+          <p style={{fontSize:12.5,color:CO.muted,marginBottom:18}}>Columns: <strong style={{color:CO.text}}>{c.cols}</strong></p>
           <input ref={c.ref} type="file" accept=".csv,.xlsx,.xlsm,.xls" onChange={e=>handle(e,c.t)}/>
-          <button className="btn btn-primary" onClick={()=>c.ref.current.click()} style={{width:"100%",background:c.t==="test"?`linear-gradient(135deg,${CO.purple},#a78bfa)`:undefined}}>{ld?"Processing…":"Choose File & Import"}</button>
+          <button className="btn btn-primary" onClick={()=>c.ref.current.click()} style={{width:"100%",background:c.t==="test"?CO.purple:undefined}}>{ld?"Processing…":"Choose File & Import"}</button>
           {iSt[c.t]&&<div style={{marginTop:14,padding:12,borderRadius:10,background:iSt[c.t].ok?`${CO.green}12`:`${CO.red}12`,fontSize:13}}>
             {iSt[c.t].ok?<span style={{color:CO.green}}>✓ {iSt[c.t].ct.toLocaleString()} records from {iSt[c.t].fn}</span>:<span style={{color:CO.red}}>✗ {iSt[c.t].err}</span>}</div>}
         </div>))}
     </div>
     {rawData.length>0&&<div style={{marginTop:32,background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:20}}>
       <h3 style={{fontSize:14,fontWeight:600,marginBottom:10}}>Preview (first 8 rows)</h3>
-      <div style={{overflow:"auto",maxHeight:260,borderRadius:8}}>
-        <table><thead><tr>{Object.keys(rawData[0]).slice(0,7).map(h=><th key={h}>{h}</th>)}</tr></thead>
-        <tbody>{rawData.slice(0,8).map((r,i)=><tr key={i}>{Object.keys(rawData[0]).slice(0,7).map(h=><td key={h}>{r[h]}</td>)}</tr>)}</tbody></table></div></div>}
+      <div style={{overflow:"auto",maxHeight:260}}><table><thead><tr>{Object.keys(rawData[0]).slice(0,7).map(h=><th key={h}>{h}</th>)}</tr></thead>
+      <tbody>{rawData.slice(0,8).map((r,i)=><tr key={i}>{Object.keys(rawData[0]).slice(0,7).map(h=><td key={h}>{r[h]}</td>)}</tr>)}</tbody></table></div></div>}
   </div>);
 }
 
-/* ═══ EXEC SUMMARY TAB (on-screen) ═══ */
 function ExecTab({rawData,testRoomData,fS,sS,suS}){
   if(!rawData.length)return<Empty/>;
-  const us=new Set(rawData.map(r=>r["Student ID"])).size;const fs=new Set(rawData.filter(r=>r["Semester (course)"]===fS).map(r=>r["Student ID"])).size;const ss=new Set(rawData.filter(r=>r["Semester (course)"]===sS).map(r=>r["Student ID"])).size;const sus=new Set(rawData.filter(r=>r["Semester (course)"]===suS).map(r=>r["Student ID"])).size;
-  const ap=rawData.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").length;const dn=rawData.filter(r=>(r["Approved"]||"").toLowerCase()==="denied").length;
-  const topA=bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null).slice(0,10);const topH=bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN).slice(0,10);
-  const clC={},clS=new Set();rawData.forEach(r=>{const sid=r["Student ID"];if(clS.has(sid))return;clS.add(sid);const cl=normCL(r["Class Level"]);clC[cl]=(clC[cl]||0)+1});const clL=Object.keys(clC).sort((a,b)=>clC[b]-clC[a]);
-  const bOpts={indexAxis:'y',plugins:{legend:{display:true}},scales:{x:{grid:{color:"#1a2040"},ticks:{color:CO.dim}},y:{grid:{display:false},ticks:{color:CO.muted,font:{size:11}}}}};
-  return(<div className="fade-up">
-    <h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Executive Summary</h2>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:28}}>
-      <SC label="Unique Students" value={us} icon="⦿"/><SC label="Total Records" value={rawData.length} icon="◈" color={CO.purple} delay={.05}/><SC label="Approved" value={ap} icon="✓" color={CO.green} sub={`${(ap/(ap+dn)*100).toFixed(1)}% rate`} delay={.1}/><SC label="Denied" value={dn} icon="✗" color={CO.red} delay={.15}/><SC label="Test Bookings" value={testRoomData.length||"—"} icon="✎" color={CO.yellow} delay={.2}/>
+  const us=new Set(rawData.map(r=>r["Student ID"])).size;const ap=rawData.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").length;const dn=rawData.filter(r=>(r["Approved"]||"").toLowerCase()==="denied").length;
+  return(<div className="fade-up"><h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Executive Summary</h2>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:28}}>
+      <SC label="Unique Students" value={us}/><SC label="Total Records" value={rawData.length} color={CO.purple}/><SC label="Approved" value={ap} color={CO.green} sub={`${(ap/(ap+dn)*100).toFixed(1)}%`}/><SC label="Denied" value={dn} color={CO.red}/>
+    </div><p style={{color:CO.muted}}>Use <strong style={{color:CO.accent}}>Generate Word Report</strong> tab to customize charts and export.</p></div>);
+}
+
+function AT({summary,vm}){return(<div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden"}}><div style={{overflow:"auto",maxHeight:"65vh"}}><table><thead><tr><th style={{minWidth:300}}>Accommodation</th>{vm==="semester"?<><th style={{textAlign:"right"}}>Fall Appr</th><th style={{textAlign:"right"}}>Fall Den</th><th style={{textAlign:"right"}}>Spr Appr</th><th style={{textAlign:"right"}}>Spr Den</th></>:<><th style={{textAlign:"right"}}>Approved</th><th style={{textAlign:"right"}}>Denied</th></>}<th style={{textAlign:"right"}}>Total Unique</th></tr></thead><tbody>{summary.map((row,i)=>(<tr key={i}><td style={{fontWeight:500}}>{row.name}</td>{vm==="semester"?<><td style={{textAlign:"right"}}><span className="badge badge-green">{row.fallApproved}</span></td><td style={{textAlign:"right"}}><span className="badge badge-red">{row.fallDenied}</span></td><td style={{textAlign:"right"}}><span className="badge badge-green">{row.springApproved}</span></td><td style={{textAlign:"right"}}><span className="badge badge-red">{row.springDenied}</span></td></>:<><td style={{textAlign:"right"}}><span className="badge badge-green">{row.calApproved}</span></td><td style={{textAlign:"right"}}><span className="badge badge-red">{row.calDenied}</span></td></>}<td style={{textAlign:"right",fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{row.totalUnique}</td></tr>))}</tbody></table></div></div>)}
+function AcadTab({rawData,fS,sS}){const[vm,sVM]=useState("semester");const s=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null),[rawData,fS,sS]);if(!rawData.length)return<Empty/>;return(<div className="fade-up"><div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}><h2 style={{fontSize:26,fontWeight:800}}>Academic Accommodations</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div><AT summary={s} vm={vm}/></div>)}
+function HousingTab({rawData,fS,sS}){const[vm,sVM]=useState("semester");const s=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN),[rawData,fS,sS]);if(!rawData.length)return<Empty/>;return(<div className="fade-up"><div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}><h2 style={{fontSize:26,fontWeight:800}}>Housing Report</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div><AT summary={s} vm={vm}/></div>)}
+function TestTab({testRoomData,fS,sS}){if(!testRoomData.length)return<Empty msg="Import test room data."/>;const ft=testRoomData.filter(r=>r["Semester"]===fS).length,st=testRoomData.filter(r=>r["Semester"]===sS).length;return(<div className="fade-up"><h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Test Room Bookings</h2><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}><SC label="Total" value={testRoomData.length} color={CO.yellow}/><SC label={fS} value={ft} color={CO.orange}/><SC label={sS} value={st} color={CO.green}/><SC label="Unique Students" value={new Set(testRoomData.map(r=>r["Student"])).size}/></div></div>)}
+function StudTab({rawData,fS,sS,suS}){if(!rawData.length)return<Empty/>;const bE=(sf)=>{const c={},s=new Set();(sf?rawData.filter(r=>r["Semester (course)"]===sf):rawData).forEach(r=>{const sid=r["Student ID"],cl=normCL(r["Class Level"]),k=sf?`${sid}_${cl}`:sid;if(s.has(k))return;s.add(k);c[cl]=(c[cl]||0)+1});return c};const all=bE(null),fe=bE(fS),se=bE(sS),sue=bE(suS);const lvls=[...new Set([...UG,"Graduate","Doctoral","Alumni","Exchange Program","Incominggr",...Object.keys(all)])];const tot=o=>Object.values(o).reduce((a,b)=>a+b,0);
+  return(<div className="fade-up"><h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Student Enrollment</h2><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}><SC label="Total" value={tot(all)}/><SC label={fS} value={tot(fe)} color={CO.orange}/><SC label={sS} value={tot(se)} color={CO.green}/><SC label={suS} value={tot(sue)} color={CO.yellow}/></div>
+    <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden"}}><div style={{overflow:"auto"}}><table><thead><tr><th>Class Level</th><th style={{textAlign:"right"}}>Fall</th><th style={{textAlign:"right"}}>Spring</th><th style={{textAlign:"right"}}>Summer</th><th style={{textAlign:"right"}}>All</th></tr></thead><tbody>{lvls.filter(cl=>all[cl]).map(cl=><tr key={cl}><td>{cl}</td><td style={{textAlign:"right"}}>{fe[cl]||0}</td><td style={{textAlign:"right"}}>{se[cl]||0}</td><td style={{textAlign:"right"}}>{sue[cl]||0}</td><td style={{textAlign:"right",fontWeight:700}}>{all[cl]||0}</td></tr>)}<tr style={{background:`${CO.accent}0c`}}><td style={{fontWeight:700}}>TOTAL</td><td style={{textAlign:"right",fontWeight:700}}>{tot(fe)}</td><td style={{textAlign:"right",fontWeight:700}}>{tot(se)}</td><td style={{textAlign:"right",fontWeight:700}}>{tot(sue)}</td><td style={{textAlign:"right",fontWeight:700,color:CO.accent}}>{tot(all)}</td></tr></tbody></table></div></div></div>)}
+function ExpTab({rawData,fS,sS}){if(!rawData.length)return<Empty msg="Import data first."/>;
+  const eA=()=>dlXLSX(bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null).map(a=>({Accommodation:a.name,"Fall Approved":a.fallApproved,"Fall Denied":a.fallDenied,"Spring Approved":a.springApproved,"Spring Denied":a.springDenied,"Total Unique":a.totalUnique})),"Academic_Report.xlsx");
+  const eH=()=>dlXLSX(bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN).map(a=>({Accommodation:a.name,"Fall Approved":a.fallApproved,"Fall Denied":a.fallDenied,"Spring Approved":a.springApproved,"Spring Denied":a.springDenied,"Total Unique":a.totalUnique})),"Housing_Report.xlsx");
+  return(<div className="fade-up"><h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Export as Excel</h2><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,maxWidth:700}}>{[{l:"Academic",fn:eA,c:CO.accent},{l:"Housing",fn:eH,c:CO.purple}].map(e=><div key={e.l} style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:16,fontWeight:700,marginBottom:16}}>{e.l}</h3><button className="btn btn-primary" onClick={e.fn} style={{width:"100%",background:e.c}}>↓ Download .xlsx</button></div>)}</div></div>)}
+
+/* ═══ CHART EDITOR PANEL ═══ */
+function ChartEditor({cfg,onChange}){
+  const cTypes=cfg.allowedTypes||["bar","doughnut","pie"];
+  const topNs=cfg.allowTopN?[5,8,10,15]:null;
+  return(<div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:20,marginBottom:20}}>
+    <div style={{marginBottom:12}}><p className="gen-label">{cfg.figLabel}</p>
+      <input className="gen-input" value={cfg.title} onChange={e=>onChange({...cfg,title:e.target.value})} style={{fontSize:15,fontWeight:600}}/></div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:14,marginBottom:14,alignItems:"flex-start"}}>
+      <div><p style={{fontSize:11,color:CO.dim,marginBottom:6}}>Chart Type</p><div style={{display:"flex",gap:6}}>{cTypes.map(t=><button key={t} className={`chip ${cfg.type===t?"active":""}`} onClick={()=>onChange({...cfg,type:t})}>{t==="doughnut"?"Doughnut":t==="pie"?"Pie":"Bar"}</button>)}</div></div>
+      {topNs&&<div><p style={{fontSize:11,color:CO.dim,marginBottom:6}}>Show Top</p><div style={{display:"flex",gap:6}}>{topNs.map(n=><button key={n} className={`chip ${cfg.topN===n?"active":""}`} onClick={()=>onChange({...cfg,topN:n})}>{n}</button>)}</div></div>}
+      <div><p style={{fontSize:11,color:CO.dim,marginBottom:6}}>Palette</p><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{Object.keys(PALETTES).map(name=><button key={name} className={`chip ${cfg.palette===name?"active":""}`} onClick={()=>onChange({...cfg,palette:name})} style={{fontSize:11,padding:"3px 10px"}}>{name}</button>)}</div></div>
     </div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:20,marginBottom:20}}>
-      <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:14,fontWeight:700,marginBottom:16}}>Approval vs Denial</h3><MyChart type="doughnut" data={{labels:["Approved","Denied"],datasets:[{data:[ap,dn],backgroundColor:[CO.green,CO.red],borderWidth:0,hoverOffset:8}]}} height={220} options={{cutout:"65%",plugins:{legend:{position:"bottom"}}}}/></div>
-      <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:14,fontWeight:700,marginBottom:16}}>Students by Class Level</h3><MyChart type="doughnut" data={{labels:clL,datasets:[{data:clL.map(l=>clC[l]),backgroundColor:CCOL.slice(0,clL.length),borderWidth:0}]}} height={220} options={{cutout:"55%",plugins:{legend:{position:"bottom"}}}}/></div>
-      <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:14,fontWeight:700,marginBottom:16}}>Students by Semester</h3><MyChart type="bar" data={{labels:[fS,sS,suS],datasets:[{label:"Students",data:[fs,ss,sus],backgroundColor:[CO.orange+"cc",CO.green+"cc",CO.yellow+"cc"],borderRadius:6}]}} height={220} options={{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:"#1a2040"}}}}}/></div>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
-      <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:14,fontWeight:700,marginBottom:16}}>Top 10 Academic Accommodations</h3><MyChart type="bar" data={{labels:topA.map(a=>a.name.length>35?a.name.slice(0,32)+"…":a.name),datasets:[{label:"Approved",data:topA.map(a=>a.calApproved),backgroundColor:CO.green+"cc",borderRadius:4},{label:"Denied",data:topA.map(a=>a.calDenied),backgroundColor:CO.red+"cc",borderRadius:4}]}} height={340} options={bOpts}/></div>
-      <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:14,fontWeight:700,marginBottom:16}}>Top 10 Housing Accommodations</h3><MyChart type="bar" data={{labels:topH.map(a=>a.name.length>30?a.name.slice(0,27)+"…":a.name),datasets:[{label:"Approved",data:topH.map(a=>a.calApproved),backgroundColor:CO.purple+"cc",borderRadius:4},{label:"Denied",data:topH.map(a=>a.calDenied),backgroundColor:CO.red+"cc",borderRadius:4}]}} height={340} options={bOpts}/></div>
+    {cfg.twoColor&&<div style={{display:"flex",gap:16,marginBottom:14}}>
+      <div><p style={{fontSize:11,color:CO.dim,marginBottom:4}}>{cfg.c1Label||"Color 1"}</p><input type="color" value={cfg.c1} onChange={e=>onChange({...cfg,c1:e.target.value})} style={{width:44,height:28,border:"none",borderRadius:6,cursor:"pointer"}}/></div>
+      <div><p style={{fontSize:11,color:CO.dim,marginBottom:4}}>{cfg.c2Label||"Color 2"}</p><input type="color" value={cfg.c2} onChange={e=>onChange({...cfg,c2:e.target.value})} style={{width:44,height:28,border:"none",borderRadius:6,cursor:"pointer"}}/></div>
+    </div>}
+    <div style={{background:CO.bg,borderRadius:10,padding:12}}>
+      <PChart type={cfg.type} data={cfg.mkData(cfg)} options={cfg.mkOpts(cfg)} height={cfg.ph||260}/>
     </div>
   </div>);
 }
 
-/* ═══ ACCOMMODATION TABLE (on-screen) ═══ */
-function AT({summary,vm}){return(<div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden"}}><div style={{overflow:"auto",maxHeight:"65vh"}}><table><thead><tr><th style={{minWidth:300}}>Accommodation</th>{vm==="semester"?<><th style={{textAlign:"right"}}>Fall Approved</th><th style={{textAlign:"right"}}>Fall Denied</th><th style={{textAlign:"right"}}>Spring Approved</th><th style={{textAlign:"right"}}>Spring Denied</th></>:<><th style={{textAlign:"right"}}>Approved (Year)</th><th style={{textAlign:"right"}}>Denied (Year)</th></>}<th style={{textAlign:"right"}}>Total Unique</th></tr></thead><tbody>{summary.map((row,i)=>(<tr key={i}><td style={{fontWeight:500}}>{row.name}</td>{vm==="semester"?<><td style={{textAlign:"right"}}><span className="badge badge-green">{row.fallApproved}</span></td><td style={{textAlign:"right"}}><span className="badge badge-red">{row.fallDenied}</span></td><td style={{textAlign:"right"}}><span className="badge badge-green">{row.springApproved}</span></td><td style={{textAlign:"right"}}><span className="badge badge-red">{row.springDenied}</span></td></>:<><td style={{textAlign:"right"}}><span className="badge badge-green">{row.calApproved}</span></td><td style={{textAlign:"right"}}><span className="badge badge-red">{row.calDenied}</span></td></>}<td style={{textAlign:"right",fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{row.totalUnique}</td></tr>))}</tbody></table></div></div>)}
-
-function AcadTab({rawData,fS,sS}){const[vm,sVM]=useState("semester");const d=useMemo(()=>rawData.filter(r=>isA(r["Requested Accommodation"])),[rawData]);const s=useMemo(()=>bSum(d,fS,sS,null),[d,fS,sS]);if(!rawData.length)return<Empty/>;
-  return(<div className="fade-up"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div><h2 style={{fontSize:26,fontWeight:800}}>Academic Accommodations</h2><p style={{color:CO.muted,fontSize:13,marginTop:4}}>{s.length} types · sorted by most requested</p></div><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>By Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Calendar Year</button></div></div><AT summary={s} vm={vm}/></div>)}
-
-function HousingTab({rawData,fS,sS}){const[vm,sVM]=useState("semester");const[showC,sSC]=useState(false);const d=useMemo(()=>rawData.filter(r=>isH(r["Requested Accommodation"])),[rawData]);const s=useMemo(()=>bSum(d,fS,sS,cHN),[d,fS,sS]);
-  const conflicts=useMemo(()=>{const m={};d.forEach(r=>{const k=`${r["Student ID"]}||${r["Requested Accommodation"]}||${r["Semester (course)"]}`;if(!m[k])m[k]={name:r["Name"],accom:r["Requested Accommodation"],sem:r["Semester (course)"],sts:new Set()};m[k].sts.add((r["Approved"]||"").toLowerCase())});return Object.values(m).filter(v=>v.sts.has("approved")&&v.sts.has("denied")).map(v=>({student:v.name,accommodation:cHN(v.accom),semester:v.sem}))},[d]);
-  if(!rawData.length)return<Empty/>;
-  return(<div className="fade-up"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div><h2 style={{fontSize:26,fontWeight:800}}>Housing Report</h2><p style={{color:CO.muted,fontSize:13,marginTop:4}}>{s.length} types · prefix auto-removed</p></div><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>By Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Calendar Year</button>{conflicts.length>0&&<button className={`btn ${showC?"btn-primary":"btn-outline"}`} onClick={()=>sSC(!showC)} style={{borderColor:CO.yellow,color:showC?"#fff":CO.yellow,background:showC?CO.yellow:"transparent"}}>⚠ {conflicts.length} Conflicts</button>}</div></div>
-    {showC&&conflicts.length>0&&<div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.yellow}44`,padding:20,marginBottom:20}}><h3 style={{fontSize:14,fontWeight:600,color:CO.yellow,marginBottom:12}}>⚠ Both Approved & Denied — same accommodation, same semester</h3><div style={{overflow:"auto",maxHeight:300}}><table><thead><tr><th>Student</th><th>Accommodation</th><th>Semester</th></tr></thead><tbody>{conflicts.map((c,i)=><tr key={i}><td>{c.student}</td><td>{c.accommodation}</td><td>{c.semester}</td></tr>)}</tbody></table></div></div>}
-    <AT summary={s} vm={vm}/></div>)}
-
-function TestTab({testRoomData,fS,sS}){if(!testRoomData.length)return<Empty msg="Import test room data from Import tab."/>;
-  const ft=testRoomData.filter(r=>r["Semester"]===fS).length,st=testRoomData.filter(r=>r["Semester"]===sS).length,uniq=new Set(testRoomData.map(r=>r["Student"])).size,canc=testRoomData.filter(r=>(r["Appointment Cancelled"]||"").toLowerCase()==="yes").length;
-  return(<div className="fade-up"><h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Test Room Bookings</h2>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:24}}><SC label="Total Tests" value={testRoomData.length} icon="✎" color={CO.yellow}/><SC label={fS} value={ft} color={CO.orange}/><SC label={sS} value={st} color={CO.green}/><SC label="Unique Students" value={uniq}/><SC label="Cancelled" value={canc} color={CO.red}/></div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:24}}>
-      <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:14,fontWeight:700,marginBottom:16}}>Tests by Semester</h3><MyChart type="bar" data={{labels:[fS,sS],datasets:[{label:"Tests",data:[ft,st],backgroundColor:[CO.orange+"cc",CO.green+"cc"],borderRadius:6}]}} height={200} options={{plugins:{legend:{display:false}}}}/></div>
-      <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:14,fontWeight:700,marginBottom:16}}>Completion Rate</h3><MyChart type="doughnut" data={{labels:["Completed","Cancelled"],datasets:[{data:[testRoomData.length-canc,canc],backgroundColor:[CO.green,CO.red],borderWidth:0}]}} height={200} options={{cutout:"60%",plugins:{legend:{position:"bottom"}}}}/></div>
-    </div>
-    <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden"}}><div style={{padding:"16px 20px",borderBottom:`1px solid ${CO.border}`}}><h3 style={{fontSize:14,fontWeight:600}}>All Bookings</h3></div><div style={{overflow:"auto",maxHeight:"36vh"}}><table><thead><tr><th>Student</th><th>Course</th><th>Exam</th><th>Cancelled</th><th>Semester</th></tr></thead><tbody>{testRoomData.slice(0,500).map((r,i)=>(<tr key={i}><td style={{fontWeight:500}}>{r["Student"]}</td><td style={{maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r["Course (Object)"]}</td><td>{r["Exam"]}</td><td>{(r["Appointment Cancelled"]||"").toLowerCase()==="yes"?<span className="badge badge-red">Yes</span>:<span className="badge badge-green">No</span>}</td><td>{r["Semester"]}</td></tr>))}</tbody></table></div></div></div>)}
-
-function StudTab({rawData,fS,sS,suS}){if(!rawData.length)return<Empty/>;
-  const bE=(sf)=>{const c={},s=new Set();(sf?rawData.filter(r=>r["Semester (course)"]===sf):rawData).forEach(r=>{const sid=r["Student ID"],cl=normCL(r["Class Level"]),k=sf?`${sid}_${cl}`:sid;if(s.has(k))return;s.add(k);c[cl]=(c[cl]||0)+1});return c};
-  const all=bE(null),fe=bE(fS),se=bE(sS),sue=bE(suS);const lvls=[...new Set([...UG,"Graduate","Doctoral","Alumni","Exchange Program","Incominggr",...Object.keys(all)])];const tot=o=>Object.values(o).reduce((a,b)=>a+b,0);const ugT=UG.reduce((s,cl)=>s+(all[cl]||0),0);
-  return(<div className="fade-up"><h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Student Enrollment</h2>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}><SC label="Total Unique" value={tot(all)} icon="⦿"/><SC label={fS} value={tot(fe)} color={CO.orange}/><SC label={sS} value={tot(se)} color={CO.green}/><SC label={suS} value={tot(sue)} color={CO.yellow}/></div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
-      <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:16,fontWeight:700,marginBottom:16}}>Undergraduates</h3><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{UG.map(cl=><div key={cl} style={{padding:"14px 16px",background:CO.bg,borderRadius:10}}><p style={{fontSize:12,color:CO.muted}}>{cl}</p><p style={{fontSize:26,fontWeight:800,fontFamily:"'JetBrains Mono',monospace"}}>{all[cl]||0}</p><p style={{fontSize:11,color:CO.dim}}>F:{fe[cl]||0} · S:{se[cl]||0} · Su:{sue[cl]||0}</p></div>)}</div><div style={{marginTop:16,padding:"14px 16px",background:`${CO.accent}12`,borderRadius:10,textAlign:"center"}}><p style={{fontSize:12,color:CO.muted}}>Total Undergraduates</p><p style={{fontSize:32,fontWeight:800,color:CO.accent,fontFamily:"'JetBrains Mono',monospace"}}>{ugT}</p></div></div>
-      <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden"}}><div style={{padding:"16px 20px",borderBottom:`1px solid ${CO.border}`}}><h3 style={{fontSize:16,fontWeight:700}}>All Levels by Semester</h3></div><div style={{overflow:"auto"}}><table><thead><tr><th>Class Level</th><th style={{textAlign:"right"}}>Fall</th><th style={{textAlign:"right"}}>Spring</th><th style={{textAlign:"right"}}>Summer</th><th style={{textAlign:"right"}}>All</th></tr></thead><tbody>
-        {lvls.filter(cl=>all[cl]).map(cl=><tr key={cl}><td style={{fontWeight:500}}>{cl}</td><td style={{textAlign:"right",fontFamily:"'JetBrains Mono',monospace"}}>{fe[cl]||0}</td><td style={{textAlign:"right",fontFamily:"'JetBrains Mono',monospace"}}>{se[cl]||0}</td><td style={{textAlign:"right",fontFamily:"'JetBrains Mono',monospace"}}>{sue[cl]||0}</td><td style={{textAlign:"right",fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{all[cl]||0}</td></tr>)}
-        <tr style={{background:`${CO.accent}0c`}}><td style={{fontWeight:700}}>TOTAL</td><td style={{textAlign:"right",fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{tot(fe)}</td><td style={{textAlign:"right",fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{tot(se)}</td><td style={{textAlign:"right",fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{tot(sue)}</td><td style={{textAlign:"right",fontWeight:700,fontFamily:"'JetBrains Mono',monospace",color:CO.accent}}>{tot(all)}</td></tr></tbody></table></div></div></div></div>)}
-
-function ExpTab({rawData,testRoomData,fS,sS,suS}){if(!rawData.length&&!testRoomData.length)return<Empty msg="Import data first."/>;
-  const eA=()=>dlXLSX(bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null).map(a=>({Accommodation:a.name,"Fall Approved":a.fallApproved,"Fall Denied":a.fallDenied,"Spring Approved":a.springApproved,"Spring Denied":a.springDenied,"Total Unique":a.totalUnique,"Year Approved":a.calApproved,"Year Denied":a.calDenied})),"Academic_Accommodations_Report.xlsx");
-  const eH=()=>dlXLSX(bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN).map(a=>({Accommodation:a.name,"Fall Approved":a.fallApproved,"Fall Denied":a.fallDenied,"Spring Approved":a.springApproved,"Spring Denied":a.springDenied,"Total Unique":a.totalUnique,"Year Approved":a.calApproved,"Year Denied":a.calDenied})),"Housing_Report.xlsx");
-  const eE=()=>{const rows=[];[fS,sS,suS].forEach(sem=>{const c={},s=new Set();rawData.filter(r=>r["Semester (course)"]===sem).forEach(r=>{const k=`${r["Student ID"]}_${normCL(r["Class Level"])}`;if(s.has(k))return;s.add(k);const cl=normCL(r["Class Level"]);c[cl]=(c[cl]||0)+1});Object.entries(c).forEach(([cl,ct])=>rows.push({Semester:sem,"Class Level":cl,"Total Students":ct}))});dlXLSX(rows,"Student_Enrollment.xlsx")};
-  const eT=()=>dlXLSX(testRoomData,"Test_Room_Bookings.xlsx");
-  const exps=[{label:"Academic Accommodations",desc:"Approved/denied by semester & year",fn:eA,color:CO.accent,dis:!rawData.length},{label:"Housing Report",desc:"Housing with prefix cleaned",fn:eH,color:CO.purple,dis:!rawData.length},{label:"Student Enrollment",desc:"Unique counts by class level",fn:eE,color:CO.green,dis:!rawData.length},{label:"Test Room Bookings",desc:"Full booking data",fn:eT,color:CO.yellow,dis:!testRoomData.length}];
-  return(<div className="fade-up"><h2 style={{fontSize:26,fontWeight:800,marginBottom:8}}>Export Data as Excel</h2><p style={{color:CO.muted,marginBottom:32}}>Download as .xlsx files.</p>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,maxWidth:920}}>{exps.map(ex=><div key={ex.label} style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24,opacity:ex.dis?.35:1}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}><div style={{width:10,height:10,borderRadius:"50%",background:ex.color}}/><h3 style={{fontSize:16,fontWeight:700}}>{ex.label}</h3></div>
-      <p style={{fontSize:13,color:CO.muted,marginBottom:18,lineHeight:1.6}}>{ex.desc}</p>
-      <button className="btn btn-primary" onClick={ex.fn} disabled={ex.dis} style={{width:"100%",background:`linear-gradient(135deg,${ex.color},${ex.color}dd)`}}>↓ Download .xlsx</button></div>)}</div></div>)}
-
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* ═══ GENERATE WORD REPORT TAB (with embedded chart images) ═══ */
-/* ═══════════════════════════════════════════════════════════════════════════ */
+/* ═══ GENERATE REPORT TAB ═══ */
 function GenReportTab({rawData,testRoomData,fS,sS,suS,academicYear}){
-  const[prepFor,setPrepFor]=useState("Andy Bills, Senior Vice President for Career and Professional Development, Student Success and Executive Education");
-  const[prepBy,setPrepBy]=useState("Joel Peddle, Assistant Director of Assistive Technology & OARS Testing Center");
-  const[finalBy,setFinalBy]=useState("Anna Ward, Senior Director of OARS");
-  const[highlights,setHighlights]=useState([]);
-  const[generating,setGenerating]=useState(false);
-  const[genStatus,setGenStatus]=useState(null);
-  const[progress,setProgress]=useState("");
+  const[prepFor,setPF]=useState("Andy Bills, Senior Vice President for Career and Professional Development, Student Success and Executive Education");
+  const[prepBy,setPB]=useState("Joel Peddle, Assistant Director of Assistive Technology & OARS Testing Center");
+  const[finalBy,setFB]=useState("Anna Ward, Senior Director of OARS");
+  const[highlights,setHL]=useState([]);
+  const[generating,setGEN]=useState(false);
+  const[genStatus,setGS]=useState(null);
+  const[progress,setProg]=useState("");
 
-  useEffect(()=>{
-    if(!rawData.length)return;
-    const us=new Set(rawData.map(r=>r["Student ID"])).size;
-    const topA=bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null);
-    const topH=bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN);
-    const ft=testRoomData.filter(r=>r["Semester"]===fS).length;const st=testRoomData.filter(r=>r["Semester"]===sS).length;
-    const lA=topA.length?topA[topA.length-1]:null;const lH=topH.length?topH[topH.length-1]:null;
-    setHighlights([
-      `The total number of registered OARS students for ${academicYear} is ${us.toLocaleString()}.`,
-      topA[0]?`${topA[0].name} is the most frequently requested academic accommodation with ${topA[0].totalUnique.toLocaleString()} unique students.`:"",
-      topA[1]?`${topA[1].name} is the second most requested with ${topA[1].totalUnique.toLocaleString()} unique students.`:"",
-      lA?`The least requested academic accommodation is ${lA.name}, requested by ${lA.totalUnique} student(s).`:"",
-      (ft+st)?`The Testing Center administered a total of ${(ft+st).toLocaleString()} tests for ${fS} and ${sS}.`:"",
-      ft?`${fS}: ${ft.toLocaleString()} tests`:"",st?`${sS}: ${st.toLocaleString()} tests`:"",
-      topH[0]?`${topH[0].name} remains the most requested housing accommodation with ${topH[0].totalUnique.toLocaleString()} total unique requests.`:"",
-      lH?`The least requested housing accommodation is ${lH.name}, requested by ${lH.totalUnique} student(s).`:"",
-    ].filter(Boolean));
+  const us=rawData.length?new Set(rawData.map(r=>r["Student ID"])).size:0;
+  const ap=rawData.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").length;
+  const dn=rawData.filter(r=>(r["Approved"]||"").toLowerCase()==="denied").length;
+  const fs=new Set(rawData.filter(r=>r["Semester (course)"]===fS).map(r=>r["Student ID"])).size;
+  const ss=new Set(rawData.filter(r=>r["Semester (course)"]===sS).map(r=>r["Student ID"])).size;
+  const allAcad=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null),[rawData,fS,sS]);
+  const allHous=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN),[rawData,fS,sS]);
+  const ft=testRoomData.filter(r=>r["Semester"]===fS).length;const st=testRoomData.filter(r=>r["Semester"]===sS).length;
+  const clC=useMemo(()=>{const c={},s=new Set();rawData.forEach(r=>{const sid=r["Student ID"];if(s.has(sid))return;s.add(sid);const cl=normCL(r["Class Level"]);c[cl]=(c[cl]||0)+1});return c},[rawData]);
+  const clL=Object.keys(clC).sort((a,b)=>clC[b]-clC[a]);
+
+  const dOpts=(c)=>c.type==="bar"?{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true}}}:{cutout:c.type==="doughnut"?"60%":"0%",plugins:{legend:{position:"bottom"}}};
+  const barAccOpts=()=>({indexAxis:'y',plugins:{legend:{display:true}},scales:{x:{grid:{color:"#1a2040"}},y:{grid:{display:false},ticks:{font:{size:11}}}}});
+
+  const[charts,setCh]=useState({
+    approval:{id:"approval",title:"Approval vs Denial",figLabel:"Figure 1",type:"doughnut",palette:"Default",twoColor:true,c1:"#22c58d",c2:"#ef5757",c1Label:"Approved",c2Label:"Denied",allowedTypes:["doughnut","pie","bar"],ph:240,
+      mkData:(c)=>({labels:["Approved","Denied"],datasets:[{data:[ap,dn],backgroundColor:[c.c1,c.c2],borderWidth:0}]}),mkOpts:dOpts},
+    classLevel:{id:"classLevel",title:"Students by Class Level",figLabel:"Figure 2",type:"doughnut",palette:"Default",allowedTypes:["doughnut","pie","bar"],ph:280,
+      mkData:(c)=>{const pal=PALETTES[c.palette]||PALETTES.Default;return c.type==="bar"?{labels:clL,datasets:[{label:"Students",data:clL.map(l=>clC[l]),backgroundColor:pal.slice(0,clL.length),borderRadius:4}]}:{labels:clL,datasets:[{data:clL.map(l=>clC[l]),backgroundColor:pal.slice(0,clL.length),borderWidth:0}]}},mkOpts:dOpts},
+    semester:{id:"semester",title:"Students by Semester",figLabel:"Figure 3",type:"bar",palette:"Default",twoColor:true,c1:"#f08c3a",c2:"#22c58d",c1Label:fS,c2Label:sS,allowedTypes:["bar","doughnut","pie"],ph:220,
+      mkData:(c)=>c.type==="bar"?{labels:[fS,sS],datasets:[{label:"Students",data:[fs,ss],backgroundColor:[c.c1,c.c2],borderRadius:6}]}:{labels:[fS,sS],datasets:[{data:[fs,ss],backgroundColor:[c.c1,c.c2],borderWidth:0}]},mkOpts:dOpts},
+    academic:{id:"academic",title:"Top Academic Accommodations",figLabel:"Figure 4",type:"bar",palette:"Default",twoColor:true,c1:"#22c58d",c2:"#ef5757",c1Label:"Approved",c2Label:"Denied",allowedTypes:["bar"],allowTopN:true,topN:10,ph:320,
+      mkData:(c)=>{const d=allAcad.slice(0,c.topN||10);return{labels:d.map(a=>a.name.length>40?a.name.slice(0,37)+"…":a.name),datasets:[{label:"Approved",data:d.map(a=>a.calApproved),backgroundColor:c.c1+"cc",borderRadius:4},{label:"Denied",data:d.map(a=>a.calDenied),backgroundColor:c.c2+"cc",borderRadius:4}]}},mkOpts:barAccOpts},
+    housing:{id:"housing",title:"Top Housing Accommodations",figLabel:"Figure 5",type:"bar",palette:"Default",twoColor:true,c1:"#8b6cff",c2:"#ef5757",c1Label:"Approved",c2Label:"Denied",allowedTypes:["bar"],allowTopN:true,topN:10,ph:320,
+      mkData:(c)=>{const d=allHous.slice(0,c.topN||10);return{labels:d.map(a=>a.name.length>35?a.name.slice(0,32)+"…":a.name),datasets:[{label:"Approved",data:d.map(a=>a.calApproved),backgroundColor:c.c1+"cc",borderRadius:4},{label:"Denied",data:d.map(a=>a.calDenied),backgroundColor:c.c2+"cc",borderRadius:4}]}},mkOpts:barAccOpts},
+  });
+  const upCh=(id,v)=>setCh(p=>({...p,[id]:v}));
+
+  useEffect(()=>{if(!rawData.length)return;const lA=allAcad.length?allAcad[allAcad.length-1]:null;const lH=allHous.length?allHous[allHous.length-1]:null;
+    setHL([`Total registered OARS students for ${academicYear}: ${us.toLocaleString()}.`,allAcad[0]?`${allAcad[0].name} is the most requested academic accommodation (${allAcad[0].totalUnique} unique students).`:"",lA?`Least requested academic: ${lA.name} (${lA.totalUnique} student(s)).`:"",(ft+st)?`Testing Center total: ${(ft+st).toLocaleString()} tests (${fS} + ${sS}).`:"",allHous[0]?`${allHous[0].name} is the most requested housing accommodation (${allHous[0].totalUnique} unique).`:""].filter(Boolean));
   },[rawData,testRoomData,fS,sS]);
 
   const generateDocx=async()=>{
-    setGenerating(true);setGenStatus(null);setProgress("Preparing data...");
+    setGEN(true);setGS(null);setProg("Preparing...");
     try{
-      const D=docx;
-      if(!D||!D.Document)throw new Error("docx library not loaded. Refresh and try again.");
+      const D=docx;if(!D||!D.Document)throw new Error("docx library not loaded. Refresh the page.");
+      const topA=allAcad.slice(0,charts.academic.topN||10);const topH=allHous.slice(0,charts.housing.topN||10);
+      const leastAI=allAcad.length?allAcad[allAcad.length-1]:null;const leastHI=allHous.length?allHous[allHous.length-1]:null;
 
-      const us=new Set(rawData.map(r=>r["Student ID"])).size;
-      const fs=new Set(rawData.filter(r=>r["Semester (course)"]===fS).map(r=>r["Student ID"])).size;
-      const ss=new Set(rawData.filter(r=>r["Semester (course)"]===sS).map(r=>r["Student ID"])).size;
-      const ap=rawData.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").length;
-      const dn=rawData.filter(r=>(r["Approved"]||"").toLowerCase()==="denied").length;
-      const topA=bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null).slice(0,10);
-      const topH=bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN).slice(0,10);
-      const ft=testRoomData.filter(r=>r["Semester"]===fS).length;const st=testRoomData.filter(r=>r["Semester"]===sS).length;
-      const leastA=bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null);
-      const leastAI=leastA.length?leastA[leastA.length-1]:null;
-      const leastH=bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN);
-      const leastHI=leastH.length?leastH[leastH.length-1]:null;
-      const clC={},clSS=new Set();rawData.forEach(r=>{const sid=r["Student ID"];if(clSS.has(sid))return;clSS.add(sid);const cl=normCL(r["Class Level"]);clC[cl]=(clC[cl]||0)+1});
-      const clL=Object.keys(clC).sort((a,b)=>clC[b]-clC[a]);
+      /* Render charts to PNG */
+      const imgs={};
+      for(const key of ["approval","classLevel","semester","academic","housing"]){
+        const c=charts[key];setProg("Rendering "+c.title+"...");
+        const pOpts={...c.mkOpts(c)};
+        if(pOpts.scales){Object.values(pOpts.scales).forEach(s=>{if(s.ticks)s.ticks={...s.ticks,color:"#444"};if(s.grid)s.grid={...s.grid,color:"#ddd"}})}
+        if(pOpts.plugins&&pOpts.plugins.legend&&pOpts.plugins.legend.labels)pOpts.plugins.legend.labels={...pOpts.plugins.legend.labels,color:"#333"};
+        const wh=key==="academic"||key==="housing"?[700,420]:key==="classLevel"?[600,420]:[600,380];
+        imgs[key]=await renderChartToPNG(c.type,c.mkData(c),pOpts,wh[0],wh[1]);
+      }
 
-      /* ── Render charts to PNG ── */
-      setProgress("Rendering Approval chart...");
-      const approvalPNG=await renderChartToPNG('doughnut',
-        {labels:["Approved","Denied"],datasets:[{data:[ap,dn],backgroundColor:["#22c58d","#ef5757"],borderWidth:0}]},
-        {cutout:"60%",plugins:{legend:{position:"bottom",labels:{font:{size:14}}}}},600,400);
-
-      setProgress("Rendering Class Level chart...");
-      const classPNG=await renderChartToPNG('doughnut',
-        {labels:clL,datasets:[{data:clL.map(l=>clC[l]),backgroundColor:["#3878ff","#8b6cff","#22c58d","#f0b429","#f08c3a","#ef5757","#e05db0","#5cc9f5","#a3e048","#ff6b8a"],borderWidth:0}]},
-        {cutout:"50%",plugins:{legend:{position:"bottom",labels:{font:{size:13}}}}},600,420);
-
-      setProgress("Rendering Semester chart...");
-      const semPNG=await renderChartToPNG('bar',
-        {labels:[fS,sS],datasets:[{label:"Unique Students",data:[fs,ss],backgroundColor:["#f08c3a","#22c58d"],borderRadius:8}]},
-        {plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true}}},600,350);
-
-      setProgress("Rendering Academic Accommodations chart...");
-      const acadPNG=await renderChartToPNG('bar',
-        {labels:topA.map(a=>a.name.length>40?a.name.slice(0,37)+"…":a.name),
-         datasets:[{label:"Approved",data:topA.map(a=>a.calApproved),backgroundColor:"#22c58dcc",borderRadius:4},{label:"Denied",data:topA.map(a=>a.calDenied),backgroundColor:"#ef5757cc",borderRadius:4}]},
-        {indexAxis:'y',plugins:{legend:{display:true}},scales:{x:{grid:{color:"#ddd"}},y:{grid:{display:false},ticks:{font:{size:11}}}}},700,420);
-
-      setProgress("Rendering Housing Accommodations chart...");
-      const housPNG=await renderChartToPNG('bar',
-        {labels:topH.map(a=>a.name.length>35?a.name.slice(0,32)+"…":a.name),
-         datasets:[{label:"Approved",data:topH.map(a=>a.calApproved),backgroundColor:"#8b6cffcc",borderRadius:4},{label:"Denied",data:topH.map(a=>a.calDenied),backgroundColor:"#ef5757cc",borderRadius:4}]},
-        {indexAxis:'y',plugins:{legend:{display:true}},scales:{x:{grid:{color:"#ddd"}},y:{grid:{display:false},ticks:{font:{size:11}}}}},700,420);
-
-      setProgress("Building Word document...");
-
-      /* ── docx helpers ── */
-      const bdr={style:D.BorderStyle.SINGLE,size:1,color:"999999"};
-      const borders={top:bdr,bottom:bdr,left:bdr,right:bdr};
-      const hdrShading={fill:"365F91",type:D.ShadingType.CLEAR};
-      const hdrRun=(t)=>new D.TextRun({text:t,bold:true,color:"FFFFFF",size:20,font:"Calibri"});
-      const cellRun=(t)=>new D.TextRun({text:String(t),size:20,font:"Calibri"});
-      const cm={top:60,bottom:60,left:100,right:100};
-      const tw=9360;
-
-      const imgRun=(b64,w,h)=>new D.ImageRun({data:Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),transformation:{width:w,height:h},type:"png"});
+      setProg("Building document...");
+      const bdr={style:D.BorderStyle.SINGLE,size:1,color:"999999"};const borders={top:bdr,bottom:bdr,left:bdr,right:bdr};
+      const hdrSh={fill:"365F91",type:D.ShadingType.CLEAR};const cm={top:60,bottom:60,left:100,right:100};const tw=9360;
+      const hR=(t)=>new D.TextRun({text:t,bold:true,color:"FFFFFF",size:20,font:"Calibri"});
+      const cR=(t)=>new D.TextRun({text:String(t),size:20,font:"Calibri"});
+      const imgR=(b64,w,h)=>new D.ImageRun({data:Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),transformation:{width:w,height:h},type:"png"});
+      const heading=(t,sz=28)=>new D.Paragraph({spacing:{before:300,after:150},children:[new D.TextRun({text:t,bold:true,size:sz,color:"365F91",font:"Calibri"})]});
+      const footnote=(t)=>new D.Paragraph({spacing:{before:60,after:100},children:[new D.TextRun({text:t,size:18,font:"Calibri",color:"FF0000"})]});
+      const sp=()=>new D.Paragraph({spacing:{after:100},children:[]});
 
       /* Exec summary table */
-      const execRows=[["Metric",`Total ${academicYear}`,"Notes"],["Total Registered Students (OARS)",us.toLocaleString(),`${fS}, ${sS}`],["Most Requested Academic Accommodation",topA[0]?topA[0].name:"N/A",topA[0]?`${topA[0].totalUnique} students`:""],["Least Requested Academic Accommodation",leastAI?leastAI.name:"N/A",leastAI?`${leastAI.totalUnique} student(s)`:""],["Most Requested Housing Accommodation",topH[0]?topH[0].name:"N/A",topH[0]?`${topH[0].totalUnique} total unique`:""],["Least Requested Housing Accommodation",leastHI?leastHI.name:"N/A",leastHI?`${leastHI.totalUnique} student(s)`:""],["Total Tests ("+fS+")",ft.toLocaleString(),""],["Total Tests ("+sS+")",st.toLocaleString(),""],["Grand Total (Tests)",(ft+st).toLocaleString(),`${fS} + ${sS}`]];
-      const cws=[3200,3200,2960];
-      const execTable=new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:cws,rows:execRows.map((row,ri)=>new D.TableRow({children:row.map((cell,ci)=>new D.TableCell({borders,margins:cm,width:{size:cws[ci],type:D.WidthType.DXA},shading:ri===0?hdrShading:undefined,children:[new D.Paragraph({children:[ri===0?hdrRun(cell):new D.TextRun({text:cell,size:20,font:"Calibri",bold:ci===0})]})]}))}))}); 
+      const eRows=[["Metric",`Total ${academicYear}`,"Notes"],["Total Registered Students",us.toLocaleString(),`${fS}, ${sS}`],["Most Requested Academic",topA[0]?topA[0].name:"N/A",topA[0]?`${topA[0].totalUnique} students`:""],["Least Requested Academic",leastAI?leastAI.name:"N/A",leastAI?`${leastAI.totalUnique} student(s)`:""],["Most Requested Housing",topH[0]?topH[0].name:"N/A",topH[0]?`${topH[0].totalUnique} unique`:""],["Least Requested Housing",leastHI?leastHI.name:"N/A",leastHI?`${leastHI.totalUnique} student(s)`:""],["Tests ("+fS+")",ft.toLocaleString(),""],["Tests ("+sS+")",st.toLocaleString(),""],["Grand Total (Tests)",(ft+st).toLocaleString(),""]];
+      const eCW=[3200,3200,2960];
+      const eTable=new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:eCW,rows:eRows.map((row,ri)=>new D.TableRow({children:row.map((cell,ci)=>new D.TableCell({borders,margins:cm,width:{size:eCW[ci],type:D.WidthType.DXA},shading:ri===0?hdrSh:undefined,children:[new D.Paragraph({children:[ri===0?hR(cell):new D.TextRun({text:cell,size:20,font:"Calibri",bold:ci===0})]})]}))}))}); 
 
-      /* Accom table builder */
+      /* Accom table */
       const mkAT=(data)=>{const cw=[3500,1700,1700,2360];return new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:cw,rows:[
-        new D.TableRow({children:["Accommodation",`Approved ${academicYear}`,`Denied ${academicYear}`,"Total Unique"].map((h,i)=>new D.TableCell({borders,margins:cm,width:{size:cw[i],type:D.WidthType.DXA},shading:hdrShading,children:[new D.Paragraph({children:[hdrRun(h)]})]}))}),
-        ...data.map(r=>new D.TableRow({children:[
-          new D.TableCell({borders,margins:cm,width:{size:cw[0],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cellRun(r.name)]})]}),
-          new D.TableCell({borders,margins:cm,width:{size:cw[1],type:D.WidthType.DXA},children:[new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[cellRun(String(r.calApproved))]})]}),
-          new D.TableCell({borders,margins:cm,width:{size:cw[2],type:D.WidthType.DXA},children:[new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[cellRun(String(r.calDenied))]})]}),
-          new D.TableCell({borders,margins:cm,width:{size:cw[3],type:D.WidthType.DXA},children:[new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[new D.TextRun({text:String(r.totalUnique),bold:true,size:20,font:"Calibri"})]})]})
-        ]}))]})};
+        new D.TableRow({children:["Accommodation",`Approved ${academicYear}`,`Denied ${academicYear}`,"Total Unique"].map((h,i)=>new D.TableCell({borders,margins:cm,width:{size:cw[i],type:D.WidthType.DXA},shading:hdrSh,children:[new D.Paragraph({children:[hR(h)]})]}))}),
+        ...data.map(r=>new D.TableRow({children:[new D.TableCell({borders,margins:cm,width:{size:cw[0],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cR(r.name)]})]}),new D.TableCell({borders,margins:cm,width:{size:cw[1],type:D.WidthType.DXA},children:[new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[cR(String(r.calApproved))]})]}),new D.TableCell({borders,margins:cm,width:{size:cw[2],type:D.WidthType.DXA},children:[new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[cR(String(r.calDenied))]})]}),new D.TableCell({borders,margins:cm,width:{size:cw[3],type:D.WidthType.DXA},children:[new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[new D.TextRun({text:String(r.totalUnique),bold:true,size:20,font:"Calibri"})]})]})]}))
+      ]})};
 
       /* Test table */
-      const tcw=[4680,4680];
-      const testTable=new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:tcw,rows:[
-        new D.TableRow({children:[new D.TableCell({borders,margins:cm,width:{size:tcw[0],type:D.WidthType.DXA},shading:hdrShading,children:[new D.Paragraph({children:[hdrRun("Semester")]})]}),new D.TableCell({borders,margins:cm,width:{size:tcw[1],type:D.WidthType.DXA},shading:hdrShading,children:[new D.Paragraph({children:[hdrRun("Test Count")]})]})]})
-       ,new D.TableRow({children:[new D.TableCell({borders,margins:cm,width:{size:tcw[0],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cellRun(fS)]})]}),new D.TableCell({borders,margins:cm,width:{size:tcw[1],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cellRun(ft.toLocaleString())]})]})]})
-       ,new D.TableRow({children:[new D.TableCell({borders,margins:cm,width:{size:tcw[0],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cellRun(sS)]})]}),new D.TableCell({borders,margins:cm,width:{size:tcw[1],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cellRun(st.toLocaleString())]})]})]})
-       ,new D.TableRow({children:[new D.TableCell({borders,margins:cm,width:{size:tcw[0],type:D.WidthType.DXA},children:[new D.Paragraph({children:[new D.TextRun({text:"Total",bold:true,size:20,font:"Calibri"})]})]}),new D.TableCell({borders,margins:cm,width:{size:tcw[1],type:D.WidthType.DXA},children:[new D.Paragraph({children:[new D.TextRun({text:(ft+st).toLocaleString(),bold:true,size:20,font:"Calibri"})]})]})]})
-      ]});
-
-      const heading=(text,size=28)=>new D.Paragraph({spacing:{before:300,after:150},children:[new D.TextRun({text,bold:true,size,color:"365F91",font:"Calibri"})]});
-      const footnote=(text)=>new D.Paragraph({spacing:{before:60,after:100},children:[new D.TextRun({text,size:18,font:"Calibri",color:"FF0000"})]});
-      const spacer=()=>new D.Paragraph({spacing:{after:100},children:[]});
+      const tCW=[4680,4680];
+      const tTable=new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:tCW,rows:[
+        new D.TableRow({children:[new D.TableCell({borders,margins:cm,width:{size:tCW[0],type:D.WidthType.DXA},shading:hdrSh,children:[new D.Paragraph({children:[hR("Semester")]})]}),new D.TableCell({borders,margins:cm,width:{size:tCW[1],type:D.WidthType.DXA},shading:hdrSh,children:[new D.Paragraph({children:[hR("Test Count")]})]})]})
+       ,new D.TableRow({children:[new D.TableCell({borders,margins:cm,width:{size:tCW[0],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cR(fS)]})]}),new D.TableCell({borders,margins:cm,width:{size:tCW[1],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cR(ft.toLocaleString())]})]})]})
+       ,new D.TableRow({children:[new D.TableCell({borders,margins:cm,width:{size:tCW[0],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cR(sS)]})]}),new D.TableCell({borders,margins:cm,width:{size:tCW[1],type:D.WidthType.DXA},children:[new D.Paragraph({children:[cR(st.toLocaleString())]})]})]})
+       ,new D.TableRow({children:[new D.TableCell({borders,margins:cm,width:{size:tCW[0],type:D.WidthType.DXA},children:[new D.Paragraph({children:[new D.TextRun({text:"Total",bold:true,size:20,font:"Calibri"})]})]}),new D.TableCell({borders,margins:cm,width:{size:tCW[1],type:D.WidthType.DXA},children:[new D.Paragraph({children:[new D.TextRun({text:(ft+st).toLocaleString(),bold:true,size:20,font:"Calibri"})]})]})]})]});
 
       const doc=new D.Document({
         styles:{default:{document:{run:{font:"Calibri",size:22}}}},
         numbering:{config:[{reference:"bullets",levels:[{level:0,format:D.LevelFormat.BULLET,text:"\u2022",alignment:D.AlignmentType.LEFT,style:{paragraph:{indent:{left:720,hanging:360}}}}]}]},
-        sections:[{
-          properties:{page:{size:{width:12240,height:15840},margin:{top:720,bottom:720,left:720,right:720}}},
+        sections:[{properties:{page:{size:{width:12240,height:15840},margin:{top:720,bottom:720,left:720,right:720}}},
           children:[
-            /* Title page */
             new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:100},children:[new D.TextRun({text:"Annual Trends Report",bold:true,size:40,color:"365F91",font:"Calibri"})]}),
             new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:60},children:[new D.TextRun({text:"Office of Accessibility Resources and Services",bold:true,size:28,color:"365F91",font:"Calibri"})]}),
             new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:200},children:[new D.TextRun({text:`Academic Year ${academicYear}`,size:24,color:"666666",font:"Calibri"})]}),
-            spacer(),
+            sp(),
             new D.Paragraph({spacing:{after:60},children:[new D.TextRun({text:"Prepared for: ",bold:true,size:22,font:"Calibri"}),new D.TextRun({text:prepFor,size:22,font:"Calibri"})]}),
             new D.Paragraph({spacing:{after:60},children:[new D.TextRun({text:"Prepared by: ",bold:true,size:22,font:"Calibri"}),new D.TextRun({text:prepBy,size:22,font:"Calibri"})]}),
             new D.Paragraph({spacing:{after:200},children:[new D.TextRun({text:"Finalized by: ",bold:true,size:22,font:"Calibri"}),new D.TextRun({text:finalBy,size:22,font:"Calibri"})]}),
-
-            /* Executive Summary */
             new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{before:300,after:200},children:[new D.TextRun({text:"Executive Summary",bold:true,size:40,color:"365F91",font:"Calibri"})]}),
-            execTable,
-
-            /* Approval Chart */
-            spacer(),
-            heading("Approval vs Denial Overview",24),
-            new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[imgRun(approvalPNG,400,267)]}),
-
-            /* Class Level Chart */
-            spacer(),
-            heading("Students by Class Level",24),
-            new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[imgRun(classPNG,400,280)]}),
-
-            /* Semester Chart */
-            spacer(),
-            heading("Students by Semester",24),
-            new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[imgRun(semPNG,420,245)]}),
-
-            /* Page break before accommodation details */
+            eTable,
             new D.Paragraph({children:[new D.PageBreak()]}),
-
-            /* Academic Accommodations */
             heading("Summary of Accommodation Requests (by Calendar Year)"),
-            new D.Paragraph({spacing:{after:80},children:[new D.TextRun({text:"This overview highlights the academic and housing accommodations with the highest and lowest numbers of requests. Figures reflect calendar year trends based on unique student requests.",size:20,font:"Calibri",italics:true,color:"666666"})]}),
-
-            heading("Top 10 Academic Accommodations",26),
-            new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:150},children:[imgRun(acadPNG,480,288)]}),
+            heading("Top "+topA.length+" Academic Accommodations",26),
             mkAT(topA),
-            footnote("*Total Unique = The number of individual students who requested that accommodation, counted only once even if approved in both Fall and Spring."),
-
-            /* Housing Accommodations */
-            spacer(),
-            heading("Top 10 Housing Accommodations",26),
-            new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:150},children:[imgRun(housPNG,480,288)]}),
+            footnote("*Total Unique = individual students counted once even if approved in both semesters."),
+            sp(),heading("Top "+topH.length+" Housing Accommodations",26),
             mkAT(topH),
-            footnote("*Total Unique = The number of individual students who requested that accommodation, counted only once even if approved in both Fall and Spring."),
-
-            /* Testing Center */
+            footnote("*Total Unique = individual students counted once even if approved in both semesters."),
             new D.Paragraph({children:[new D.PageBreak()]}),
-            heading("OARS Testing Center Summary",32),
-            testTable,
-
-            /* Key Highlights */
-            spacer(),
-            heading("Key Highlights and Takeaways",32),
+            heading("OARS Testing Center Summary",32),tTable,
+            sp(),heading("Key Highlights and Takeaways",32),
             ...highlights.map(h=>new D.Paragraph({numbering:{reference:"bullets",level:0},spacing:{after:80},children:[new D.TextRun({text:h,size:22,font:"Calibri"})]})),
-          ]
-        }]
-      });
+            /* Charts Appendix */
+            new D.Paragraph({children:[new D.PageBreak()]}),
+            new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{before:200,after:100},children:[new D.TextRun({text:"Charts & Figures",bold:true,size:40,color:"365F91",font:"Calibri"})]}),
+            new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:250},children:[new D.TextRun({text:"Drag and drop these into your preferred locations, or keep as appendix.",size:20,font:"Calibri",italics:true,color:"888888"})]}),
+            ...[["approval",420,280],["classLevel",420,295],["semester",440,260],["academic",500,300],["housing",500,300]].flatMap(([key,w,h])=>[
+              sp(),new D.Paragraph({spacing:{after:80},children:[new D.TextRun({text:charts[key].figLabel+" — "+charts[key].title,bold:true,size:24,color:"365F91",font:"Calibri"})]}),
+              new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:200},children:[imgR(imgs[key],w,h)]}),
+            ]),
+          ]}]});
 
-      setProgress("Packaging document...");
-      const blob=await D.Packer.toBlob(doc);
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=url;a.download=`OARS_Annual_Trends_Report_${academicYear}.docx`;a.click();
-      URL.revokeObjectURL(url);
-      setGenStatus({ok:true});setProgress("");
-    }catch(err){setGenStatus({ok:false,err:err.message});setProgress("");console.error(err)}
-    setGenerating(false);
+      setProg("Packaging...");
+      const blob=await D.Packer.toBlob(doc);const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;a.download=`OARS_Annual_Trends_Report_${academicYear}.docx`;a.click();URL.revokeObjectURL(url);
+      setGS({ok:true});setProg("");
+    }catch(err){setGS({ok:false,err:err.message});setProg("");console.error(err)}
+    setGEN(false);
   };
 
   if(!rawData.length)return<Empty msg="Import data first to generate the report."/>;
 
-  return(<div className="fade-up">
+  return(<div className="fade-up" style={{maxHeight:"calc(100vh - 120px)",overflowY:"auto",paddingRight:8}}>
     <h2 style={{fontSize:26,fontWeight:800,marginBottom:8}}>Generate Annual Trends Report</h2>
-    <p style={{color:CO.muted,marginBottom:24,maxWidth:700,lineHeight:1.6}}>Generates a Word document (.docx) matching the OARS Annual Trends Report format — complete with <strong style={{color:CO.accent}}>charts, tables, and highlights</strong> — all populated from your imported data.</p>
+    <p style={{color:CO.muted,marginBottom:24,lineHeight:1.6}}>Customize your charts below with live previews, then generate the Word document. Charts go to an appendix you can rearrange in Word.</p>
 
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,maxWidth:920}}>
+    {/* Report Info */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:24}}>
       <div>
-        <div className="gen-section"><p className="gen-label">Prepared For</p><input className="gen-input" value={prepFor} onChange={e=>setPrepFor(e.target.value)}/></div>
-        <div className="gen-section"><p className="gen-label">Prepared By</p><input className="gen-input" value={prepBy} onChange={e=>setPrepBy(e.target.value)}/></div>
-        <div className="gen-section"><p className="gen-label">Finalized By</p><input className="gen-input" value={finalBy} onChange={e=>setFinalBy(e.target.value)}/></div>
+        <div className="gen-section"><p className="gen-label">Prepared For</p><input className="gen-input" value={prepFor} onChange={e=>setPF(e.target.value)}/></div>
+        <div className="gen-section"><p className="gen-label">Prepared By</p><input className="gen-input" value={prepBy} onChange={e=>setPB(e.target.value)}/></div>
+        <div className="gen-section"><p className="gen-label">Finalized By</p><input className="gen-input" value={finalBy} onChange={e=>setFB(e.target.value)}/></div>
       </div>
-      <div><div className="gen-section" style={{minHeight:280}}><p className="gen-label">Key Highlights (auto-generated, editable)</p><textarea className="gen-input" style={{minHeight:220}} value={highlights.join("\n\n")} onChange={e=>setHighlights(e.target.value.split("\n\n").filter(Boolean))}/></div></div>
+      <div className="gen-section" style={{minHeight:240}}><p className="gen-label">Key Highlights (auto-generated, editable)</p>
+        <textarea className="gen-input" style={{minHeight:200}} value={highlights.join("\n\n")} onChange={e=>setHL(e.target.value.split("\n\n").filter(Boolean))}/></div>
     </div>
 
-    <div style={{marginTop:24,maxWidth:920}}>
+    {/* Chart Customization Studio */}
+    <h3 style={{fontSize:18,fontWeight:700,marginBottom:16,color:CO.accent}}>Chart Customization Studio</h3>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+      <ChartEditor cfg={charts.approval} onChange={v=>upCh("approval",v)}/>
+      <ChartEditor cfg={charts.classLevel} onChange={v=>upCh("classLevel",v)}/>
+      <ChartEditor cfg={charts.semester} onChange={v=>upCh("semester",v)}/>
+      <div style={{gridColumn:"span 2"}}><ChartEditor cfg={charts.academic} onChange={v=>upCh("academic",v)}/></div>
+      <div style={{gridColumn:"span 2"}}><ChartEditor cfg={charts.housing} onChange={v=>upCh("housing",v)}/></div>
+    </div>
+
+    {/* Generate Button */}
+    <div style={{marginTop:24,marginBottom:40,position:"sticky",bottom:0,background:CO.bg,padding:"16px 0",borderTop:`1px solid ${CO.border}`}}>
       <button className="btn btn-primary" onClick={generateDocx} disabled={generating} style={{padding:"14px 40px",fontSize:16,background:`linear-gradient(135deg,${CO.accent},${CO.purple})`}}>
-        {generating?"Generating Report…":"📄 Generate & Download Word Report"}
-      </button>
+        {generating?"Generating Report…":"📄 Generate & Download Word Report"}</button>
       {progress&&<span style={{marginLeft:16,color:CO.yellow,fontSize:13}}>{progress}</span>}
-      {genStatus&&<div style={{marginTop:14,padding:12,borderRadius:10,background:genStatus.ok?`${CO.green}12`:`${CO.red}12`,fontSize:13,display:"inline-block",marginLeft:generating?0:16}}>
-        {genStatus.ok?<span style={{color:CO.green}}>✓ Report downloaded successfully!</span>:<span style={{color:CO.red}}>✗ {genStatus.err}</span>}</div>}
-    </div>
-
-    <div style={{marginTop:32,background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}>
-      <h3 style={{fontSize:14,fontWeight:700,marginBottom:16}}>What the report includes:</h3>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        {["Executive Summary table with key metrics","📊 Approval vs Denial doughnut chart","📊 Students by Class Level chart","📊 Students by Semester bar chart","📊 Top 10 Academic Accommodations bar chart","📊 Top 10 Housing Accommodations bar chart","Top 10 Academic Accommodations data table","Top 10 Housing Accommodations data table","OARS Testing Center summary table","Key Highlights & Takeaways bullet points","Formatted headers, footnotes & red notes","Page breaks for clean printing"].map(item=>(
-          <div key={item} style={{display:"flex",gap:8,alignItems:"flex-start"}}><span style={{color:CO.green,fontSize:13,flexShrink:0}}>✓</span><p style={{fontSize:13,color:CO.muted}}>{item}</p></div>
-        ))}
-      </div>
+      {genStatus&&<span style={{marginLeft:16,padding:"6px 14px",borderRadius:10,background:genStatus.ok?`${CO.green}12`:`${CO.red}12`,fontSize:13,color:genStatus.ok?CO.green:CO.red}}>
+        {genStatus.ok?"✓ Downloaded!":"✗ "+genStatus.err}</span>}
     </div>
   </div>);
 }
@@ -456,9 +351,9 @@ function App(){
     <header style={{background:CO.card,borderBottom:`1px solid ${CO.border}`,padding:"14px 32px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
       <div style={{display:"flex",alignItems:"center",gap:14}}>
         <div style={{width:42,height:42,borderRadius:12,background:`linear-gradient(135deg,${CO.accent},${CO.purple})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:800}}>DS</div>
-        <div><h1 style={{fontSize:17,fontWeight:800,letterSpacing:"-.02em"}}>Disability Services Report Tool</h1><p style={{fontSize:11.5,color:CO.muted}}>Annual Accommodation & Testing Analysis</p></div></div>
+        <div><h1 style={{fontSize:17,fontWeight:800}}>Disability Services Report Tool</h1><p style={{fontSize:11.5,color:CO.muted}}>Annual Accommodation & Testing Analysis</p></div></div>
       <div style={{display:"flex",alignItems:"center",gap:14}}>
-        <label style={{fontSize:12.5,color:CO.muted,fontWeight:500}}>Academic Year:</label>
+        <label style={{fontSize:12.5,color:CO.muted}}>Academic Year:</label>
         <select value={ay} onChange={e=>setAY(e.target.value)} style={{background:CO.bg,color:CO.text,border:`1.5px solid ${CO.border}`,borderRadius:8,padding:"7px 14px",fontSize:14,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>
           {["2023-2024","2024-2025","2025-2026","2026-2027"].map(y=><option key={y} value={y}>{y}</option>)}</select>
         <div style={{padding:"5px 14px",borderRadius:24,background:rawData.length?`${CO.green}18`:`${CO.red}18`,color:rawData.length?CO.green:CO.red,fontSize:12,fontWeight:600}}>{rawData.length?`${rawData.length.toLocaleString()} records`:"No data"}</div>
@@ -468,7 +363,7 @@ function App(){
         {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 18px",background:tab===t.id?CO.accentSoft:"transparent",border:"none",borderLeft:tab===t.id?`3px solid ${CO.accent}`:"3px solid transparent",color:tab===t.id?CO.accent:CO.muted,cursor:"pointer",fontSize:13.5,fontFamily:"inherit",fontWeight:tab===t.id?700:400,transition:"all .15s"}}><span style={{fontSize:15,width:20,textAlign:"center"}}>{t.icon}</span>{t.label}</button>)}
         <div style={{margin:"20px 18px",padding:16,background:CO.bg,borderRadius:12,border:`1px solid ${CO.border}`}}>
           <p style={{fontSize:11,color:CO.dim,fontWeight:500,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>Workflow</p>
-          <p style={{fontSize:12,color:CO.muted,lineHeight:1.6}}>1. Import data files<br/>2. Review dashboards<br/>3. Export Excel data<br/>4. <strong style={{color:CO.accent}}>Generate Word report with charts</strong></p></div>
+          <p style={{fontSize:12,color:CO.muted,lineHeight:1.6}}>1. Import data<br/>2. Review tabs<br/>3. <strong style={{color:CO.accent}}>Customize charts & generate report</strong></p></div>
       </nav>
       <main style={{flex:1,padding:28,overflow:"auto"}}>
         {tab==="import"&&<ImportTab rawData={rawData} setRawData={setRawData} testRoomData={testRoomData} setTestRoomData={setTestRoomData} iSt={iSt} setISt={setISt} ld={ld} setLd={setLd}/>}
@@ -477,7 +372,7 @@ function App(){
         {tab==="housing"&&<HousingTab rawData={rawData} fS={fS} sS={sS}/>}
         {tab==="testroom"&&<TestTab testRoomData={testRoomData} fS={fS} sS={sS}/>}
         {tab==="students"&&<StudTab rawData={rawData} fS={fS} sS={sS} suS={suS}/>}
-        {tab==="export"&&<ExpTab rawData={rawData} testRoomData={testRoomData} fS={fS} sS={sS} suS={suS}/>}
+        {tab==="export"&&<ExpTab rawData={rawData} fS={fS} sS={sS}/>}
         {tab==="generate"&&<GenReportTab rawData={rawData} testRoomData={testRoomData} fS={fS} sS={sS} suS={suS} academicYear={ay}/>}
       </main></div></div>);
 }
