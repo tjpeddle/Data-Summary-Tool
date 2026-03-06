@@ -355,7 +355,7 @@ function App(){
       <div style={{display:"flex",alignItems:"center",gap:14}}>
         <label style={{fontSize:12.5,color:CO.muted}}>Academic Year:</label>
         <select value={ay} onChange={e=>setAY(e.target.value)} style={{background:CO.bg,color:CO.text,border:`1.5px solid ${CO.border}`,borderRadius:8,padding:"7px 14px",fontSize:14,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>
-          {["2023-2024","2024-2025","2025-2026","2026-2027"].map(y=><option key={y} value={y}>{y}</option>)}</select>
+          {["2019-2020","2020-2021","2021-2022","2022-2023","2023-2024","2024-2025","2025-2026","2026-2027","2027-2028","2028-2029","2029-2030","2030-2031","2031-2032","2032-2033"].map(y=><option key={y} value={y}>{y}</option>)}</select>
         <div style={{padding:"5px 14px",borderRadius:24,background:rawData.length?`${CO.green}18`:`${CO.red}18`,color:rawData.length?CO.green:CO.red,fontSize:12,fontWeight:600}}>{rawData.length?`${rawData.length.toLocaleString()} records`:"No data"}</div>
       </div></header>
     <div style={{display:"flex",height:"calc(100vh - 71px)"}}>
