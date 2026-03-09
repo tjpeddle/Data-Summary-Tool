@@ -238,9 +238,72 @@ function ExecTab({rawData,testRoomData,fS,sS,suS}){
 }
 
 function AT({summary,vm,onRowClick}){return(<div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden"}}><div style={{overflow:"auto",maxHeight:"65vh"}}><table><thead><tr><th style={{minWidth:300}}>Accommodation</th>{vm==="semester"?<><th style={{textAlign:"right"}}>Fall Appr</th><th style={{textAlign:"right"}}>Fall Den</th><th style={{textAlign:"right"}}>Spr Appr</th><th style={{textAlign:"right"}}>Spr Den</th></>:<><th style={{textAlign:"right"}}>Approved</th><th style={{textAlign:"right"}}>Denied</th></>}<th style={{textAlign:"right"}}>Total Unique</th><th style={{width:60}}></th></tr></thead><tbody>{summary.map((row,i)=>(<tr key={i} className="row-clickable" onClick={()=>onRowClick&&onRowClick(row)}><td style={{fontWeight:500}}>{row.name}</td>{vm==="semester"?<><td style={{textAlign:"right"}}><span className="badge badge-green">{row.fallApproved}</span></td><td style={{textAlign:"right"}}><span className="badge badge-red">{row.fallDenied}</span></td><td style={{textAlign:"right"}}><span className="badge badge-green">{row.springApproved}</span></td><td style={{textAlign:"right"}}><span className="badge badge-red">{row.springDenied}</span></td></>:<><td style={{textAlign:"right"}}><span className="badge badge-green">{row.calApproved}</span></td><td style={{textAlign:"right"}}><span className="badge badge-red">{row.calDenied}</span></td></>}<td style={{textAlign:"right",fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{row.totalUnique}</td><td style={{textAlign:"center",color:CO.dim,fontSize:16}}>›</td></tr>))}</tbody></table></div></div>)}
-function AcadTab({rawData,fS,sS}){const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);const s=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null),[rawData,fS,sS]);if(!rawData.length)return<Empty/>;return(<div className="fade-up"><SummaryPanel panel={panel} onClose={()=>setPanel(null)} fS={fS} sS={sS}/><div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}><h2 style={{fontSize:26,fontWeight:800}}>Academic Accommodations</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div><p style={{fontSize:13,color:CO.dim,marginBottom:12}}>Click any row to view a detailed summary ›</p><AT summary={s} vm={vm} onRowClick={row=>setPanel({title:"Academic Accommodation",type:"accommodation",row})}/></div>)}
-function HousingTab({rawData,fS,sS}){const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);const s=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN),[rawData,fS,sS]);if(!rawData.length)return<Empty/>;return(<div className="fade-up"><SummaryPanel panel={panel} onClose={()=>setPanel(null)} fS={fS} sS={sS}/><div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}><h2 style={{fontSize:26,fontWeight:800}}>Housing Report</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div><p style={{fontSize:13,color:CO.dim,marginBottom:12}}>Click any row to view a detailed summary ›</p><AT summary={s} vm={vm} onRowClick={row=>setPanel({title:"Housing Accommodation",type:"accommodation",row})}/></div>)}
-function TestTab({testRoomData,fS,sS}){const[panel,setPanel]=useState(null);if(!testRoomData.length)return<Empty msg="Import test room data."/>;const ft=testRoomData.filter(r=>r["Semester"]===fS).length,st=testRoomData.filter(r=>r["Semester"]===sS).length;return(<div className="fade-up"><SummaryPanel panel={panel} onClose={()=>setPanel(null)} fS={fS} sS={sS}/><h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Test Room Bookings</h2><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}><div className="stat-card" style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:"20px 24px",cursor:"pointer"}} onClick={()=>setPanel({title:"Test Room Summary",type:"testroom",testRoomData})}><p style={{fontSize:11.5,color:CO.muted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8,fontWeight:500}}>Total</p><p style={{fontSize:30,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.yellow,lineHeight:1}}>{testRoomData.length.toLocaleString()}</p><p style={{fontSize:11,color:CO.dim,marginTop:6}}>Click for details ›</p></div><SC label={fS} value={ft} color={CO.orange}/><SC label={sS} value={st} color={CO.green}/><SC label="Unique Students" value={new Set(testRoomData.map(r=>r["Student"])).size}/></div></div>)}
+function TotalFooter({label,uniqueAll,uniqueFall,uniqueSpring,color=CO.accent,fS,sS}){
+  return(<div style={{marginTop:16,padding:"18px 24px",borderRadius:14,background:`${color}10`,border:`1.5px solid ${color}30`,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+    <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <div style={{width:10,height:10,borderRadius:"50%",background:color,flexShrink:0}}/>
+      <p style={{fontSize:13.5,color:CO.muted,fontWeight:500}}>{label}</p>
+    </div>
+    <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+      {uniqueFall!=null&&<div style={{textAlign:"center"}}><p style={{fontSize:10,color:CO.dim,textTransform:"uppercase",letterSpacing:".06em",marginBottom:2}}>{fS}</p><p style={{fontSize:20,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.orange}}>{uniqueFall.toLocaleString()}</p></div>}
+      {uniqueSpring!=null&&<div style={{textAlign:"center"}}><p style={{fontSize:10,color:CO.dim,textTransform:"uppercase",letterSpacing:".06em",marginBottom:2}}>{sS}</p><p style={{fontSize:20,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.green}}>{uniqueSpring.toLocaleString()}</p></div>}
+      <div style={{textAlign:"center"}}><p style={{fontSize:10,color:CO.dim,textTransform:"uppercase",letterSpacing:".06em",marginBottom:2}}>Total Unique Students</p><p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color}}>{uniqueAll.toLocaleString()}</p></div>
+    </div>
+  </div>);
+}
+
+function AcadTab({rawData,fS,sS}){
+  const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);
+  const s=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),fS,sS,null),[rawData,fS,sS]);
+  const uniqueApprAll=useMemo(()=>new Set(rawData.filter(r=>isA(r["Requested Accommodation"])&&(r["Approved"]||"").toLowerCase()==="approved").map(r=>r["Student ID"]||r["Name"])).size,[rawData]);
+  const uniqueApprFall=useMemo(()=>new Set(rawData.filter(r=>isA(r["Requested Accommodation"])&&(r["Approved"]||"").toLowerCase()==="approved"&&r["Semester (course)"]===fS).map(r=>r["Student ID"]||r["Name"])).size,[rawData,fS]);
+  const uniqueApprSpring=useMemo(()=>new Set(rawData.filter(r=>isA(r["Requested Accommodation"])&&(r["Approved"]||"").toLowerCase()==="approved"&&r["Semester (course)"]===sS).map(r=>r["Student ID"]||r["Name"])).size,[rawData,sS]);
+  if(!rawData.length)return<Empty/>;
+  return(<div className="fade-up"><SummaryPanel panel={panel} onClose={()=>setPanel(null)} fS={fS} sS={sS}/>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}><h2 style={{fontSize:26,fontWeight:800}}>Academic Accommodations</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div>
+    <p style={{fontSize:13,color:CO.dim,marginBottom:12}}>Click any row to view a detailed summary ›</p>
+    <AT summary={s} vm={vm} onRowClick={row=>setPanel({title:"Academic Accommodation",type:"accommodation",row})}/>
+    <TotalFooter label="Students who received at least one approved academic accommodation" uniqueAll={uniqueApprAll} uniqueFall={uniqueApprFall} uniqueSpring={uniqueApprSpring} color={CO.accent} fS={fS} sS={sS}/>
+  </div>);
+}
+
+function HousingTab({rawData,fS,sS}){
+  const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);
+  const s=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),fS,sS,cHN),[rawData,fS,sS]);
+  const uniqueApprAll=useMemo(()=>new Set(rawData.filter(r=>isH(r["Requested Accommodation"])&&(r["Approved"]||"").toLowerCase()==="approved").map(r=>r["Student ID"]||r["Name"])).size,[rawData]);
+  const uniqueApprFall=useMemo(()=>new Set(rawData.filter(r=>isH(r["Requested Accommodation"])&&(r["Approved"]||"").toLowerCase()==="approved"&&r["Semester (course)"]===fS).map(r=>r["Student ID"]||r["Name"])).size,[rawData,fS]);
+  const uniqueApprSpring=useMemo(()=>new Set(rawData.filter(r=>isH(r["Requested Accommodation"])&&(r["Approved"]||"").toLowerCase()==="approved"&&r["Semester (course)"]===sS).map(r=>r["Student ID"]||r["Name"])).size,[rawData,sS]);
+  if(!rawData.length)return<Empty/>;
+  return(<div className="fade-up"><SummaryPanel panel={panel} onClose={()=>setPanel(null)} fS={fS} sS={sS}/>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}><h2 style={{fontSize:26,fontWeight:800}}>Housing Report</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div>
+    <p style={{fontSize:13,color:CO.dim,marginBottom:12}}>Click any row to view a detailed summary ›</p>
+    <AT summary={s} vm={vm} onRowClick={row=>setPanel({title:"Housing Accommodation",type:"accommodation",row})}/>
+    <TotalFooter label="Students who received at least one approved housing accommodation" uniqueAll={uniqueApprAll} uniqueFall={uniqueApprFall} uniqueSpring={uniqueApprSpring} color={CO.purple} fS={fS} sS={sS}/>
+  </div>);
+}
+
+function TestTab({testRoomData,fS,sS}){
+  const[panel,setPanel]=useState(null);
+  if(!testRoomData.length)return<Empty msg="Import test room data."/>;
+  const ft=testRoomData.filter(r=>r["Semester"]===fS).length,st=testRoomData.filter(r=>r["Semester"]===sS).length;
+  const uniqueAll=new Set(testRoomData.map(r=>r["Student"])).size;
+  const uniqueFall=new Set(testRoomData.filter(r=>r["Semester"]===fS).map(r=>r["Student"])).size;
+  const uniqueSpring=new Set(testRoomData.filter(r=>r["Semester"]===sS).map(r=>r["Student"])).size;
+  return(<div className="fade-up"><SummaryPanel panel={panel} onClose={()=>setPanel(null)} fS={fS} sS={sS}/>
+    <h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Test Room Bookings</h2>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:16}}>
+      <div className="stat-card" style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:"20px 24px",cursor:"pointer"}} onClick={()=>setPanel({title:"Test Room Summary",type:"testroom",testRoomData})}>
+        <p style={{fontSize:11.5,color:CO.muted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8,fontWeight:500}}>Total Bookings</p>
+        <p style={{fontSize:30,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.yellow,lineHeight:1}}>{testRoomData.length.toLocaleString()}</p>
+        <p style={{fontSize:11,color:CO.dim,marginTop:6}}>Click for details ›</p>
+      </div>
+      <SC label={fS} value={ft} color={CO.orange}/>
+      <SC label={sS} value={st} color={CO.green}/>
+      <SC label="Unique Students" value={uniqueAll}/>
+    </div>
+    <TotalFooter label="Unique students who used the testing center" uniqueAll={uniqueAll} uniqueFall={uniqueFall} uniqueSpring={uniqueSpring} color={CO.yellow} fS={fS} sS={sS}/>
+  </div>);
+}
 function StudTab({rawData,fS,sS,suS}){const[panel,setPanel]=useState(null);if(!rawData.length)return<Empty/>;const bE=(sf)=>{const c={},s=new Set();(sf?rawData.filter(r=>r["Semester (course)"]===sf):rawData).forEach(r=>{const sid=r["Student ID"]||r["Name"],cl=normCL(r["Class Level"]),k=sf?`${sid}_${cl}`:sid;if(s.has(k))return;s.add(k);c[cl]=(c[cl]||0)+1});return c};const all=bE(null),fe=bE(fS),se=bE(sS),sue=bE(suS);const lvls=[...new Set([...UG,"Graduate","Doctoral","Alumni","Exchange Program","Incominggr",...Object.keys(all)])];const tot=o=>Object.values(o).reduce((a,b)=>a+b,0);
   return(<div className="fade-up"><SummaryPanel panel={panel} onClose={()=>setPanel(null)} fS={fS} sS={sS}/><h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Student Enrollment</h2><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}><div className="stat-card" style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:"20px 24px",cursor:"pointer"}} onClick={()=>setPanel({title:"Student Enrollment Summary",type:"students",allStudents:{all,fe,se,sue,tot}})}><p style={{fontSize:11.5,color:CO.muted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8,fontWeight:500}}>Total</p><p style={{fontSize:30,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.accent,lineHeight:1}}>{tot(all).toLocaleString()}</p><p style={{fontSize:11,color:CO.dim,marginTop:6}}>Click for details ›</p></div><SC label={fS} value={tot(fe)} color={CO.orange}/><SC label={sS} value={tot(se)} color={CO.green}/><SC label={suS} value={tot(sue)} color={CO.yellow}/></div>
     <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden"}}><div style={{overflow:"auto"}}><table><thead><tr><th>Class Level</th><th style={{textAlign:"right"}}>Fall</th><th style={{textAlign:"right"}}>Spring</th><th style={{textAlign:"right"}}>Summer</th><th style={{textAlign:"right"}}>All</th></tr></thead><tbody>{lvls.filter(cl=>all[cl]).map(cl=><tr key={cl}><td>{cl}</td><td style={{textAlign:"right"}}>{fe[cl]||0}</td><td style={{textAlign:"right"}}>{se[cl]||0}</td><td style={{textAlign:"right"}}>{sue[cl]||0}</td><td style={{textAlign:"right",fontWeight:700}}>{all[cl]||0}</td></tr>)}<tr style={{background:`${CO.accent}0c`}}><td style={{fontWeight:700}}>TOTAL</td><td style={{textAlign:"right",fontWeight:700}}>{tot(fe)}</td><td style={{textAlign:"right",fontWeight:700}}>{tot(se)}</td><td style={{textAlign:"right",fontWeight:700}}>{tot(sue)}</td><td style={{textAlign:"right",fontWeight:700,color:CO.accent}}>{tot(all)}</td></tr></tbody></table></div></div></div>)}
