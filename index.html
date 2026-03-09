@@ -1104,6 +1104,8 @@ function IncomingTab({incomingData,fS,sS}){
 
   // Housing check
   const hKw=["housing accommodation","emotional support animal","service animal","accessible transport","single room","without suitemates","with suitemates"];
+  const tKw=["extra time","distraction-reduced","paper copy of exam","no scantron","four-function calculator","reader assistive","consideration for computer","consideration for memory","consideration for spelling","break during","enlarged print","foreign language substitution"];
+  const isTest=r=>tKw.some(k=>accom(r).toLowerCase().includes(k));
   const isHousing=r=>hKw.some(k=>accom(r).toLowerCase().includes(k));
   const isAcademic=r=>!isHousing(r);
 
@@ -1148,14 +1150,18 @@ function IncomingTab({incomingData,fS,sS}){
       const deniedOnly=new Set([...allStudents].filter(s=>!apprStudents.has(s)));
       return{label,appr:apprStudents.size,denied:deniedOnly.size,total:allStudents.size,
         acadAppr:new Set(rows.filter(r=>isAppr(r)&&isAcademic(r)).map(sid)).size,
-        housAppr:new Set(rows.filter(r=>isAppr(r)&&isHousing(r)).map(sid)).size};
+        housAppr:new Set(rows.filter(r=>isAppr(r)&&isHousing(r)).map(sid)).size,
+        testAppr:new Set(rows.filter(r=>isAppr(r)&&isTest(r)).map(sid)).size};
     });
   },[filtered]);
 
   // Semester totals (unique students)
   const semStats=(sem)=>{
-    const rows=filtered.filter(r=>getSem(r)===sem);
-    return{appr:new Set(rows.filter(isAppr).map(sid)).size,total:new Set(rows.map(sid)).size};
+    const rows=withAccom.filter(r=>getSem(r)===sem);
+    const appr=new Set(rows.filter(isAppr).map(sid));
+    const total=new Set(rows.map(sid));
+    const denied=new Set([...total].filter(s=>!appr.has(s)));
+    return{appr:appr.size,denied:denied.size,total:total.size};
   };
   const fallStats=semStats(fS),springStats=semStats(sS);
 
@@ -1201,20 +1207,34 @@ function IncomingTab({incomingData,fS,sS}){
     <p style={{fontSize:13,color:CO.muted,marginBottom:24}}>Incoming Freshman, Graduate, and Doctoral students — only those with at least one approved accommodation shown in detail.</p>
 
     {/* Top stat cards */}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:24}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
       <SC label="Interacted with OARS" value={uniqueTotal} color={gold}/>
       <SC label="At Least One Approved" value={uniqueApprTotal} color={CO.green} sub={`of ${uniqueTotal} who interacted`}/>
       <SC label="Denied All / No Approval" value={deniedOnlySids.size} color={CO.red} sub={`of ${uniqueTotal} who interacted`}/>
+      <SC label="Received Testing Accom." value={new Set(withAccom.filter(r=>isAppr(r)&&isTest(r)).map(sid)).size} color={CO.orange}/>
     </div>
 
     {/* Semester snapshot */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:24}}>
       {[{label:fS,s:fallStats,col:CO.orange},{label:sS,s:springStats,col:CO.green}].map(x=>(
         <div key={x.label} style={{background:CO.card,borderRadius:14,border:`1.5px solid ${x.col}30`,padding:"18px 20px"}}>
-          <p style={{fontSize:11,color:x.col,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:12}}>{x.label}</p>
-          <div style={{display:"flex",gap:24}}>
-            <div><p style={{fontSize:10,color:CO.dim,textTransform:"uppercase",letterSpacing:".05em",marginBottom:2}}>Approved Students</p><p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:x.col}}>{x.s.appr}</p></div>
-            <div><p style={{fontSize:10,color:CO.dim,textTransform:"uppercase",letterSpacing:".05em",marginBottom:2}}>Total Students</p><p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.muted}}>{x.s.total}</p></div>
+          <p style={{fontSize:11,color:x.col,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:14}}>{x.label}</p>
+          <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+            <div style={{textAlign:"center",padding:"10px 14px",borderRadius:10,background:`${CO.green}0c`}}>
+              <p style={{fontSize:10,color:CO.dim,textTransform:"uppercase",letterSpacing:".05em",marginBottom:2}}>Approved</p>
+              <p style={{fontSize:26,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.green}}>{x.s.appr}</p>
+              <p style={{fontSize:10,color:CO.dim,marginTop:1}}>unique students</p>
+            </div>
+            <div style={{textAlign:"center",padding:"10px 14px",borderRadius:10,background:`${CO.red}0c`}}>
+              <p style={{fontSize:10,color:CO.dim,textTransform:"uppercase",letterSpacing:".05em",marginBottom:2}}>Denied All</p>
+              <p style={{fontSize:26,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.red}}>{x.s.denied}</p>
+              <p style={{fontSize:10,color:CO.dim,marginTop:1}}>unique students</p>
+            </div>
+            <div style={{textAlign:"center",padding:"10px 14px",borderRadius:10,background:`${x.col}0c`}}>
+              <p style={{fontSize:10,color:CO.dim,textTransform:"uppercase",letterSpacing:".05em",marginBottom:2}}>Total</p>
+              <p style={{fontSize:26,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:x.col}}>{x.s.total}</p>
+              <p style={{fontSize:10,color:CO.dim,marginTop:1}}>interacted</p>
+            </div>
           </div>
         </div>
       ))}
@@ -1249,9 +1269,10 @@ function IncomingTab({incomingData,fS,sS}){
                 <p style={{fontSize:24,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.red}}>{c.denied}</p>
               </div>
             </div>
-            <div style={{display:"flex",gap:12,justifyContent:"center"}}>
+            <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
               <span style={{fontSize:11,color:CO.accent}}>◎ {c.acadAppr} academic</span>
               {c.housAppr>0&&<span style={{fontSize:11,color:CO.purple}}>⌂ {c.housAppr} housing</span>}
+              {c.testAppr>0&&<span style={{fontSize:11,color:CO.orange}}>✎ {c.testAppr} testing</span>}
             </div>
           </div>
         ))}
