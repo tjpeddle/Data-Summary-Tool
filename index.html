@@ -702,12 +702,28 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
       mkData:(c)=>{const d=allAcad.slice(0,c.topN||10);return{labels:d.map(a=>a.name.length>40?a.name.slice(0,37)+"…":a.name),datasets:[{label:"Approved",data:d.map(a=>a.calApproved),backgroundColor:c.c1+"cc",borderRadius:4},{label:"Denied",data:d.map(a=>a.calDenied),backgroundColor:c.c2+"cc",borderRadius:4}]}},mkOpts:barAccOpts},
     housing:{id:"housing",title:"Top Housing Accommodations",figLabel:"Figure 5",type:"bar",palette:"Default",twoColor:true,c1:"#8b6cff",c2:"#ef5757",c1Label:"Approved",c2Label:"Denied",allowedTypes:["bar"],allowTopN:true,topN:10,ph:320,
       mkData:(c)=>{const d=allHous.slice(0,c.topN||10);return{labels:d.map(a=>a.name.length>35?a.name.slice(0,32)+"…":a.name),datasets:[{label:"Approved",data:d.map(a=>a.calApproved),backgroundColor:c.c1+"cc",borderRadius:4},{label:"Denied",data:d.map(a=>a.calDenied),backgroundColor:c.c2+"cc",borderRadius:4}]}},mkOpts:barAccOpts},
+    services:{id:"services",title:"Direct & Indirect Service Hours",figLabel:"Figure 6",type:"bar",palette:"Default",twoColor:false,topN:10,
+      mkData:(c)=>{const pal=PALETTES[c.palette]||PALETTES.Default;return{labels:["Direct Appts","Case Notes","Student Notes"],datasets:[{label:"Hours",data:[0,0,0],backgroundColor:[pal[0],pal[1],pal[2]],borderRadius:4}]};},
+      mkOpts:(c)=>({plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:"#1a2040"}}}})}
   });
   const upCh=(id,v)=>setCh(p=>({...p,[id]:v}));
 
   useEffect(()=>{if(!rawData.length)return;const lA=allAcad.length?allAcad[allAcad.length-1]:null;const lH=allHous.length?allHous[allHous.length-1]:null;
-    setHL([`Total registered OARS students for ${academicYear}: ${us.toLocaleString()}.`,allAcad[0]?`${allAcad[0].name} is the most requested academic accommodation (${allAcad[0].totalUnique} unique students).`:"",lA?`Least requested academic: ${lA.name} (${lA.totalUnique} student(s)).`:"",(ft+st)?`Testing Center total: ${(ft+st).toLocaleString()} tests (${fS} + ${sS}).`:"",allHous[0]?`${allHous[0].name} is the most requested housing accommodation (${allHous[0].totalUnique} unique).`:""].filter(Boolean));
-  },[rawData,testRoomData,fS,sS]);
+    const apptDel=apptData.filter(r=>(r["Appointment Cancelled"]||"").toLowerCase()!=="yes");
+    const apptHrsL=(apptDel.reduce((a,r)=>a+(parseInt(r["Appointment Length"])||0),0)/60).toFixed(1);
+    const allNotesL=[...caseNotesData,...studentNotesData];
+    const notesHrsL=(allNotesL.reduce((a,r)=>a+(parseInt(r["Duration (Case)"]||r["Duration (Student)"])||0),0)/60).toFixed(1);
+    const combL=(parseFloat(apptHrsL)+parseFloat(notesHrsL)).toFixed(1);
+    const t2=allAcad.slice(0,3);
+    setHL([
+      us?`OARS served ${us.toLocaleString()} registered students during the ${academicYear} academic year.`:"",
+      t2[0]?`${t2[0].name} remained the most frequently requested academic accommodation, with ${t2[0].calApproved.toLocaleString()} students approved${t2[1]?" — followed by "+t2[1].name+" ("+t2[1].calApproved.toLocaleString()+" approved)"+(t2[2]?" and "+t2[2].name+" ("+t2[2].calApproved.toLocaleString()+" approved).":"."):"."}` :"",
+      lA?`The least requested academic accommodation was ${lA.name}, with only ${lA.totalUnique} student${lA.totalUnique!==1?"s":""} submitting a request.`:"",
+      (ft+st)?`The OARS Testing Center administered ${(ft+st).toLocaleString()} exams during ${academicYear} (${fS}: ${ft.toLocaleString()}, ${sS}: ${st.toLocaleString()})${ft&&st&&st!==ft?" — a "+Math.abs(((st-ft)/ft*100)).toFixed(0)+"% "+(st>ft?"increase":"decrease")+" from Fall to Spring":""}.`:"",
+      allHous[0]?`${allHous[0].name} was the most requested housing accommodation, representing ${allHous[0].totalUnique.toLocaleString()} unique requests.`:"",
+      combL!=="0.0"?`OARS staff delivered ${combL} combined hours of direct and indirect student services during ${academicYear}.`:"",
+    ].filter(Boolean));
+  },[rawData,testRoomData,apptData,caseNotesData,studentNotesData,fS,sS]);
 
   const generateDocx=async()=>{
     setGEN(true);setGS(null);setProg("Preparing...");
@@ -723,15 +739,21 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
       const testAccomApproved=testAccomData.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").length;
       let apptCount=0,apptMins=0;apptData.forEach(r=>{if((r["Appointment Cancelled"]||"").toLowerCase()!=="yes"){apptCount++;apptMins+=parseInt(r["Appointment Length"])||0;}});
       const apptHrs=(apptMins/60).toFixed(1);
+      const caseNotesMins=caseNotesData.reduce((a,r)=>a+(parseInt(r["Duration (Case)"])||0),0);
+      const caseNotesHrs=(caseNotesMins/60).toFixed(1);
+      const studentNotesMins=studentNotesData.reduce((a,r)=>a+(parseInt(r["Duration (Student)"])||0),0);
+      const studentNotesHrs=(studentNotesMins/60).toFixed(1);
       const allNotes=[...caseNotesData,...studentNotesData];
-      let notesMins=0;allNotes.forEach(r=>{notesMins+=parseInt(r["Duration (Case)"]||r["Duration (Student)"])||0;});
-      const notesHrs=(notesMins/60).toFixed(1);
+      const notesHrs=((caseNotesMins+studentNotesMins)/60).toFixed(1);
       const combinedHrs=(parseFloat(apptHrs)+parseFloat(notesHrs)).toFixed(1);
       const inWithAccom=incomingData.filter(r=>(r["Requested Accommodation"]||"").trim());
       const inApprSids=new Set(inWithAccom.filter(r=>(r["_ApprovedStatus"]||"").toLowerCase()==="approved").map(r=>r["Student ID"]||r["Name"]));
       const inAllSids=new Set(inWithAccom.map(r=>r["Student ID"]||r["Name"]));
       const approvedUniq=new Set(rawData.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").map(r=>r["Student ID"]||r["Name"])).size;
       const approvalRate=us?((approvedUniq/us)*100).toFixed(1):"0.0";
+
+      /* Patch services chart with live data before rendering */
+      const svcChartCfg={...charts.services,mkData:(c)=>{const pal=PALETTES[c.palette]||PALETTES.Default;return{labels:["Direct Appointments","Case Notes","Student Notes"],datasets:[{label:"Hours",data:[parseFloat(apptHrs),parseFloat(caseNotesHrs),parseFloat(studentNotesHrs)],backgroundColor:[pal[0],pal[1],pal[2]],borderRadius:4}]};}};
 
       /* Render charts */
       const imgs={};
@@ -743,6 +765,12 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
         const wh=key==="academic"||key==="housing"?[700,420]:key==="classLevel"?[600,420]:[600,380];
         imgs[key]=await renderChartToPNG(c.type,c.mkData(c),pOpts,wh[0],wh[1]);
       }
+      if(apptData.length||allNotes.length){
+        setProg("Rendering Services chart...");
+        const sOpts={...svcChartCfg.mkOpts(svcChartCfg)};
+        if(sOpts.scales){Object.values(sOpts.scales).forEach(s=>{if(s.ticks)s.ticks={...s.ticks,color:"#444"};if(s.grid)s.grid={...s.grid,color:"#ddd"}})}
+        imgs.services=await renderChartToPNG(svcChartCfg.type,svcChartCfg.mkData(svcChartCfg),sOpts,600,360);
+      }
 
       setProg("Building document...");
       const bdr={style:D.BorderStyle.SINGLE,size:1,color:"999999"};const borders={top:bdr,bottom:bdr,left:bdr,right:bdr};
@@ -753,11 +781,11 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
       const imgR=(b64,w,h)=>new D.ImageRun({data:Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),transformation:{width:w,height:h},type:"png"});
       const hdg=(t,sz)=>new D.Paragraph({spacing:{before:280,after:120},children:[new D.TextRun({text:t,bold:true,size:sz||28,color:"365F91",font:"Calibri"})]});
       const subHdg=(t)=>new D.Paragraph({spacing:{before:180,after:80},children:[new D.TextRun({text:t,bold:true,size:24,color:"555555",font:"Calibri"})]});
-      const body=(t)=>new D.Paragraph({spacing:{after:120},children:[new D.TextRun({text:t,size:22,font:"Calibri"})]});
+      const body=(t)=>new D.Paragraph({spacing:{after:140},children:[new D.TextRun({text:t,size:22,font:"Calibri"})]});
       const fn=(t)=>new D.Paragraph({spacing:{before:60,after:80},children:[new D.TextRun({text:t,size:17,font:"Calibri",italics:true,color:"888888"})]});
       const sp=()=>new D.Paragraph({spacing:{after:100},children:[]});
       const pb=()=>new D.Paragraph({children:[new D.PageBreak()]});
-      const bl=(t)=>new D.Paragraph({numbering:{reference:"bullets",level:0},spacing:{after:80},children:[new D.TextRun({text:t,size:22,font:"Calibri"})]});
+      const bl=(t)=>new D.Paragraph({numbering:{reference:"bullets",level:0},spacing:{after:100},children:[new D.TextRun({text:t,size:22,font:"Calibri"})]});
 
       /* Section highlights box */
       const mkHL=(arr)=>new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:[tw],rows:[new D.TableRow({children:[new D.TableCell({borders,margins:cm,shading:hdrSh,children:[new D.Paragraph({children:[new D.TextRun({text:"Section Highlights",bold:true,size:22,font:"Calibri",color:"FFFFFF"})]})]})]})].concat(arr.map((b,bi)=>new D.TableRow({children:[new D.TableCell({borders,margins:cm,shading:bi%2===0?hlSh:undefined,children:[new D.Paragraph({children:[new D.TextRun({text:"- "+b,size:21,font:"Calibri"})]})]})]})  ))});
@@ -769,9 +797,10 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
       ]})}; 
 
       /* Executive summary table */
-      const eRows=[["Metric",academicYear,"Notes"],["Total Registered Students",us.toLocaleString(),fS+" & "+sS],["Accommodation Approval Rate",approvalRate+"%",approvedUniq.toLocaleString()+" approved"],["Most Requested Academic",topA[0]?topA[0].name:"N/A",topA[0]?topA[0].calApproved.toLocaleString()+" approved":""],["Most Requested Housing",topH[0]?topH[0].name:"N/A",topH[0]?topH[0].totalUnique.toLocaleString()+" unique":""],["Tests ("+fS+")",ft.toLocaleString(),""],["Tests ("+sS+")",st.toLocaleString(),""],["Grand Total (Tests)",(ft+st).toLocaleString(),testCancelled>0?testCancelled+" cancelled ("+cancelRate+"%)":""]];
+      const eRows=[["Metric",academicYear,"Notes"],["Total Registered Students",us.toLocaleString(),fS+" & "+sS],["Accommodation Approval Rate",approvalRate+"%",approvedUniq.toLocaleString()+" students approved"],["Most Requested Academic",topA[0]?topA[0].name:"N/A",topA[0]?topA[0].calApproved.toLocaleString()+" approved":""],["Most Requested Housing",topH[0]?topH[0].name:"N/A",topH[0]?topH[0].totalUnique.toLocaleString()+" unique":""],["Tests ("+fS+")",ft.toLocaleString(),""],["Tests ("+sS+")",st.toLocaleString(),""],["Grand Total (Tests)",(ft+st).toLocaleString(),testCancelled>0?testCancelled+" cancelled ("+cancelRate+"%)":""]];
       if(apptData.length)eRows.push(["Direct Service Appointments",apptCount.toLocaleString(),apptHrs+" hours"]);
-      if(allNotes.length)eRows.push(["Indirect Contacts",allNotes.length.toLocaleString(),notesHrs+" hours"]);
+      if(allNotes.length)eRows.push(["Indirect Contacts (Notes)",allNotes.length.toLocaleString(),notesHrs+" hours"]);
+      if(combinedHrs!=="0.0")eRows.push(["Combined Service Hours",combinedHrs+" hrs","Direct + indirect"]);
       if(incomingData.length)eRows.push(["Incoming Students (OARS)",inAllSids.size.toLocaleString(),inApprSids.size+" approved"]);
       const eCW=[3200,3200,2960];
       const eTable=new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:eCW,rows:eRows.map((row,ri)=>new D.TableRow({children:row.map((cell,ci)=>new D.TableCell({borders,margins:cm,width:{size:eCW[ci],type:D.WidthType.DXA},shading:ri===0?hdrSh:ri%2===0?altSh:undefined,children:[new D.Paragraph({children:[ri===0?hR(cell):new D.TextRun({text:cell,size:20,font:"Calibri",bold:ci===0})]})]}))}))}); 
@@ -783,8 +812,8 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
       /* Services table */
       const svcRows=[["Metric","Count","Hours"]];
       if(apptData.length)svcRows.push(["Direct Appointments",apptCount.toLocaleString(),apptHrs]);
-      if(caseNotesData.length)svcRows.push(["Case Notes (Indirect)",caseNotesData.length.toLocaleString(),(caseNotesData.reduce((a,r)=>a+(parseInt(r["Duration (Case)"])||0),0)/60).toFixed(1)]);
-      if(studentNotesData.length)svcRows.push(["Student Notes (Indirect)",studentNotesData.length.toLocaleString(),(studentNotesData.reduce((a,r)=>a+(parseInt(r["Duration (Student)"])||0),0)/60).toFixed(1)]);
+      if(caseNotesData.length)svcRows.push(["Case Notes (Indirect)",caseNotesData.length.toLocaleString(),caseNotesHrs]);
+      if(studentNotesData.length)svcRows.push(["Student Notes (Indirect)",studentNotesData.length.toLocaleString(),studentNotesHrs]);
       if(apptData.length||allNotes.length)svcRows.push(["Combined Total Hours","-",combinedHrs]);
       const sCW=[4500,2430,2430];
       const sTable=svcRows.length>1?new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:sCW,rows:svcRows.map((row,ri)=>new D.TableRow({children:row.map((cell,ci)=>new D.TableCell({borders,margins:cm,shading:ri===0?hdrSh:ri%2===0?altSh:undefined,children:[new D.Paragraph({alignment:ci>0?D.AlignmentType.CENTER:D.AlignmentType.LEFT,children:[ri===0?hR(cell):new D.TextRun({text:cell,size:20,font:"Calibri",bold:ci===0||ri===svcRows.length-1})]})]}))}))}):null;
@@ -798,17 +827,22 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
       const highDenyH=[...allHous].sort((a,b)=>(b.calDenied/Math.max(b.totalUnique,1))-(a.calDenied/Math.max(a.totalUnique,1)))[0];
       const housHL=[topH[0]?topH[0].name+" is the most requested housing accommodation with "+topH[0].totalUnique.toLocaleString()+" unique requests.":"No housing data loaded.",highDenyH?highDenyH.name+" has the highest housing denial rate.":"",leastHI?"Least requested: "+leastHI.name+" ("+leastHI.totalUnique+" student"+(leastHI.totalUnique!==1?"s":"")+").":""].filter(Boolean);
       const testHL=["The OARS Testing Center administered "+(ft+st).toLocaleString()+" exams during "+academicYear+" ("+fS+": "+ft.toLocaleString()+", "+sS+": "+st.toLocaleString()+").",testCancelled>0?testCancelled.toLocaleString()+" exams were cancelled ("+cancelRate+"% cancellation rate).":"No exams were cancelled this academic year.",testAccomApproved?testAccomApproved.toLocaleString()+" students have approved testing accommodations on record.":""].filter(Boolean);
-      const svcHL=[apptData.length?"OARS staff delivered "+apptCount.toLocaleString()+" direct service appointments totaling "+apptHrs+" hours.":"",allNotes.length?allNotes.length.toLocaleString()+" indirect contacts logged totaling "+notesHrs+" hours.":"",combinedHrs!=="0.0"?"Combined direct and indirect service totals "+combinedHrs+" hours of student support time.":""].filter(Boolean);
+      const svcHL=[apptData.length?"OARS staff completed "+apptCount.toLocaleString()+" direct service appointments totaling "+apptHrs+" hours.":"",caseNotesData.length?"Case notes logged: "+caseNotesData.length.toLocaleString()+" entries ("+caseNotesHrs+" hours).":"",studentNotesData.length?"Student notes logged: "+studentNotesData.length.toLocaleString()+" entries ("+studentNotesHrs+" hours).":"",combinedHrs!=="0.0"?"Combined direct and indirect service time: "+combinedHrs+" hours of student support.":""].filter(Boolean);
       const inHL=incomingData.length?[inAllSids.size+" incoming students interacted with OARS during "+academicYear+".",inApprSids.size+" received at least one approved accommodation.",(inAllSids.size-inApprSids.size)>0?(inAllSids.size-inApprSids.size)+" student"+(inAllSids.size-inApprSids.size!==1?"s were":" was")+" denied all requested accommodations.":"All incoming students received at least one approved accommodation."]:[];
 
       /* Trends */
       const trendBullets=[];
       allAcad.slice(0,5).forEach(r=>{if(r.fallApproved&&r.springApproved){const diff=r.springApproved-r.fallApproved;const pct=r.fallApproved?((Math.abs(diff)/r.fallApproved)*100).toFixed(0):"0";if(Math.abs(diff)>5)trendBullets.push(r.name+": "+(diff>0?"increased":"decreased")+" from "+r.fallApproved+" ("+fS+") to "+r.springApproved+" ("+sS+") — "+(diff>0?"up":"down")+" "+pct+"%.");}});
-      if(ft&&st){const td=st-ft;const tp=ft?((Math.abs(td)/ft)*100).toFixed(0):"0";trendBullets.push("Testing Center: Spring exam volume "+(td>=0?"up":"down")+" "+Math.abs(td)+" from Fall ("+ft.toLocaleString()+" → "+st.toLocaleString()+", "+tp+"%).");}
+      if(ft&&st){const td=st-ft;const tp=ft?((Math.abs(td)/ft)*100).toFixed(0):"0";trendBullets.push("Testing Center: Spring exam volume "+(td>=0?"up":"down")+" "+Math.abs(td)+" from Fall ("+ft.toLocaleString()+" to "+st.toLocaleString()+", "+tp+"%).");}
       if(!trendBullets.length)trendBullets.push("Insufficient semester data for trend comparison. Ensure both Fall and Spring data are loaded.");
 
-      /* Narrative */
-      const narr="During the "+academicYear+" academic year, the Office of Accessibility Resources and Services (OARS) served "+us.toLocaleString()+" unique registered students with an overall accommodation approval rate of "+approvalRate+"%. The Testing Center administered "+(ft+st).toLocaleString()+" exams across "+fS+" and "+sS+(testCancelled>0?", with a "+cancelRate+"% cancellation rate":"")+". "+(apptData.length||allNotes.length?"Staff delivered a combined "+combinedHrs+" hours of direct and indirect student support services. ":"")+"Data reflects accommodation requests processed for "+fS+" and "+sS+".";
+      /* Executive Summary narrative paragraph */
+      const top1=topA[0]?topA[0].name+" ("+topA[0].calApproved.toLocaleString()+" students)":"accommodations";
+      const top2=topA[1]?", followed closely by "+topA[1].name+" ("+topA[1].calApproved.toLocaleString()+")":"";
+      const housingNote=topH[0]?" On the housing side, "+topH[0].name+" represented the highest volume of requests with "+topH[0].totalUnique.toLocaleString()+" unique students.":"";
+      const svcNote=combinedHrs!=="0.0"?" Beyond accommodations, OARS staff invested "+combinedHrs+" combined hours in direct and indirect student support services — encompassing "+apptCount.toLocaleString()+" appointments and "+allNotes.length.toLocaleString()+" contact notes — demonstrating the depth of individualized care provided to students throughout the year.":"";
+      const testNote=(ft+st)?" The OARS Testing Center administered "+(ft+st).toLocaleString()+" exams across "+fS+" and "+sS+(testCancelled>0?", maintaining a "+cancelRate+"% cancellation rate":"")+".":"";
+      const narr="During the "+academicYear+" academic year, the Office of Accessibility Resources and Services (OARS) served "+us.toLocaleString()+" registered students, reflecting an overall accommodation approval rate of "+approvalRate+"%. The most frequently requested academic accommodation was "+top1+top2+"."+testNote+housingNote+svcNote+" This report presents a comprehensive snapshot of the accommodations reviewed, approved, and administered by OARS staff — evidence of the essential and expanding role accessibility services play in supporting student success at High Point University.";
 
       setProg("Assembling pages...");
       const doc=new D.Document({
@@ -824,38 +858,40 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
           new D.Paragraph({spacing:{after:60},children:[new D.TextRun({text:"Prepared by: ",bold:true,size:22,font:"Calibri"}),new D.TextRun({text:prepBy,size:22,font:"Calibri"})]}),
           new D.Paragraph({spacing:{after:200},children:[new D.TextRun({text:"Finalized by: ",bold:true,size:22,font:"Calibri"}),new D.TextRun({text:finalBy,size:22,font:"Calibri"})]}),
           pb(),
-          /* Executive Summary */
-          hdg("Executive Summary",36),body(narr),sp(),eTable,sp(),
+          /* Executive Summary - narrative paragraph + table + analytical bullets */
+          hdg("Executive Summary",36),
+          body(narr),
+          sp(),eTable,sp(),
           hdg("Key Highlights and Takeaways",28),...highlights.map(h=>bl(h)),
           pb(),
           /* Academic */
           hdg("Academic Accommodations",32),
-          body("The following table summarizes academic accommodation requests for "+academicYear+". Data reflects unique student requests processed through "+fS+" and "+sS+"."),
+          body("The following table summarizes academic accommodation requests for "+academicYear+". Data reflects unique student requests processed through "+fS+" and "+sS+". This overview highlights accommodations with the highest and lowest request volumes and is not an exhaustive record; additional submissions have been reviewed and processed outside the scope of this summary."),
           sp(),mkAT(topA),fn("*Total Unique = individual students counted once even if approved in both semesters."),sp(),
           new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{before:160,after:200},children:[imgR(imgs.academic,500,290)]}),
           sp(),mkHL(acadHL.length?acadHL:["Import academic accommodation data to generate highlights."]),
           pb(),
           /* Housing */
           hdg("Housing Accommodations",32),
-          body("The following table summarizes housing accommodation requests for "+academicYear+"."),
+          body("The following table summarizes housing accommodation requests for "+academicYear+". Figures reflect calendar year trends based on unique student requests submitted and reviewed by OARS staff."),
           sp(),mkAT(topH),fn("*Total Unique = individual students counted once even if approved in both semesters."),sp(),
           new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{before:160,after:200},children:[imgR(imgs.housing,500,290)]}),
           sp(),mkHL(housHL.length?housHL:["Import housing accommodation data to generate highlights."]),
           pb(),
           /* Testing */
           hdg("OARS Testing Center",32),
-          body("The OARS Testing Center provides proctored exam services to students with approved testing accommodations. The table below reflects exam bookings and delivery for "+academicYear+"."),
+          body("The OARS Testing Center provides proctored exam services to students with approved testing accommodations. The table below reflects exam bookings and delivery for "+academicYear+", including semester breakdowns and cancellation figures."),
           sp(),tTable,sp(),
           new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{before:160,after:200},children:[imgR(imgs.semester,420,260)]}),
           sp(),mkHL(testHL.length?testHL:["Import test room booking data to generate highlights."]),
           pb(),
           /* Services - only if data loaded */
-          ...((apptData.length||allNotes.length)?[hdg("Direct & Indirect Student Services",32),body("This section summarizes direct appointments and indirect contact hours logged by OARS staff during "+academicYear+"."),sp()].concat(sTable?[sTable,sp()]:[body("No service data imported.")]).concat([sp(),mkHL(svcHL.length?svcHL:["Import service data files to generate highlights."]),pb()]):[]),
+          ...((apptData.length||allNotes.length)?[hdg("Direct & Indirect Student Services",32),body("This section summarizes the direct appointments and indirect contact hours logged by OARS staff during "+academicYear+". Direct services include scheduled appointments with students, while indirect contacts encompass case notes and student notes recorded outside of formal appointment time."),sp()].concat(sTable?[sTable,sp()]:[body("No service data imported.")]).concat(imgs.services?[new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{before:160,after:200},children:[imgR(imgs.services,480,280)]}),fn("Figure 6 — Service hours by category (Direct Appointments, Case Notes, Student Notes)."),sp()]:[]).concat([mkHL(svcHL.length?svcHL:["Import service data files to generate highlights."]),pb()]):[]),
           /* Incoming - only if data loaded */
-          ...(incomingData.length&&inHL.length?[hdg("Incoming Student Registrations",32),body("Incoming students are tracked separately and are not included in the main registered student population counts above."),sp()].concat(inTable?[inTable,sp()]:[]).concat([sp(),mkHL(inHL),pb()]):[]),
+          ...(incomingData.length&&inHL.length?[hdg("Incoming Student Registrations",32),body("Incoming students represent newly registered individuals who engaged with OARS during "+academicYear+". These figures are tracked separately and are not included in the main registered student population counts above."),sp()].concat(inTable?[inTable,sp()]:[]).concat([mkHL(inHL),pb()]):[]),
           /* Trends */
           hdg("Year-at-a-Glance Trends",32),
-          body("The following highlights notable patterns comparing Fall and Spring semester data within "+academicYear+"."),
+          body("The following highlights notable patterns comparing Fall and Spring semester data within "+academicYear+". These trends reflect the continued growth and evolving needs of OARS-registered students."),
           sp(),subHdg("Academic Accommodation Trends"),...trendBullets.map(t=>bl(t)),
           sp(),subHdg("Testing Center Trends"),
           bl(ft&&st?(ft>st?"Exam volume was higher in Fall ("+ft.toLocaleString()+") than Spring ("+st.toLocaleString()+").":"Spring exam volume ("+st.toLocaleString()+") matched or exceeded Fall ("+ft.toLocaleString()+")."):("Insufficient data for trend comparison.")),
@@ -863,10 +899,18 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
           ...((apptData.length||allNotes.length)?[bl(combinedHrs+" combined service hours logged across direct and indirect contacts.")].concat(apptData.length?[bl(apptCount.toLocaleString()+" direct appointments completed ("+apptHrs+" hrs).")]: []).concat(allNotes.length?[bl(allNotes.length.toLocaleString()+" indirect contacts recorded ("+notesHrs+" hrs).")]: []):[bl("Import service data files to generate service volume trends.")]),
           sp(),mkHL([academicYear+": "+us.toLocaleString()+" registered students served.","Testing Center: "+(ft+st).toLocaleString()+" exams administered across "+fS+" and "+sS+"."].concat(combinedHrs!=="0.0"?["Total student support time: "+combinedHrs+" combined service hours."]:[])),
           pb(),
+          /* Closing Statement */
+          hdg("Closing Statement",32),
+          body("The data presented in this report reflects the dedication, professionalism, and impact of the OARS team throughout the "+academicYear+" academic year. Each accommodation approved, each exam proctored, and each hour of student support logged represents a commitment to ensuring that every student at High Point University has equitable access to their education."),
+          sp(),
+          body("OARS continues to grow — not only in the number of students served, but in the depth and quality of services provided. As enrollment and accommodation needs evolve, the office remains responsive, thorough, and student-centered in all aspects of its work. The figures in this report are more than metrics; they are a testament to the hard work of every staff member and the trust students place in OARS to advocate for their success."),
+          sp(),
+          body("This report serves as a snapshot of a single academic year, but it is part of a longer story of progress, partnership, and purpose. OARS looks forward to continued growth in the year ahead."),
+          pb(),
           /* Charts appendix */
           new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{before:200,after:100},children:[new D.TextRun({text:"Charts & Figures",bold:true,size:40,color:"365F91",font:"Calibri"})]}),
           new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:250},children:[new D.TextRun({text:"Drag and drop these into your preferred locations, or keep as appendix.",size:20,font:"Calibri",italics:true,color:"888888"})]}),
-          ...[["approval",420,280],["classLevel",420,295],["semester",440,260],["academic",500,300],["housing",500,300]].flatMap(([key,w,h])=>[sp(),new D.Paragraph({spacing:{after:80},children:[new D.TextRun({text:charts[key].figLabel+" — "+charts[key].title,bold:true,size:24,color:"365F91",font:"Calibri"})]}),new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:200},children:[imgR(imgs[key],w,h)]})]),
+          ...[["approval",420,280],["classLevel",420,295],["semester",440,260],["academic",500,300],["housing",500,300]].flatMap(([key,w,h])=>[sp(),new D.Paragraph({spacing:{after:80},children:[new D.TextRun({text:charts[key].figLabel+" — "+charts[key].title,bold:true,size:24,color:"365F91",font:"Calibri"})]}),new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:200},children:[imgR(imgs[key],w,h)]})]).concat(imgs.services?[sp(),new D.Paragraph({spacing:{after:80},children:[new D.TextRun({text:"Figure 6 — Direct & Indirect Service Hours",bold:true,size:24,color:"365F91",font:"Calibri"})]}),new D.Paragraph({alignment:D.AlignmentType.CENTER,spacing:{after:200},children:[imgR(imgs.services,480,280)]})]:[]),
         ]}]});
 
       setProg("Packaging...");
@@ -876,6 +920,7 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
     }catch(err){setGS({ok:false,err:err.message});setProg("");console.error(err);}
     setGEN(false);
   };
+
 
   if(!rawData.length)return<Empty msg="Import data first to generate the report."/>;
 
@@ -902,6 +947,7 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
       <ChartEditor cfg={charts.semester} onChange={v=>upCh("semester",v)}/>
       <div style={{gridColumn:"span 2"}}><ChartEditor cfg={charts.academic} onChange={v=>upCh("academic",v)}/></div>
       <div style={{gridColumn:"span 2"}}><ChartEditor cfg={charts.housing} onChange={v=>upCh("housing",v)}/></div>
+      <div style={{gridColumn:"span 2"}}><ChartEditor cfg={charts.services} onChange={v=>upCh("services",v)}/></div>
     </div>
 
     {/* Generate Button */}
