@@ -655,7 +655,7 @@ function ChartEditor({cfg,onChange}){
     <div style={{display:"flex",flexWrap:"wrap",gap:14,marginBottom:14,alignItems:"flex-start"}}>
       <div><p style={{fontSize:11,color:CO.dim,marginBottom:6}}>Chart Type</p><div style={{display:"flex",gap:6}}>{cTypes.map(t=><button key={t} className={`chip ${cfg.type===t?"active":""}`} onClick={()=>onChange({...cfg,type:t})}>{t==="doughnut"?"Doughnut":t==="pie"?"Pie":"Bar"}</button>)}</div></div>
       {topNs&&<div><p style={{fontSize:11,color:CO.dim,marginBottom:6}}>Show Top</p><div style={{display:"flex",gap:6}}>{topNs.map(n=><button key={n} className={`chip ${cfg.topN===n?"active":""}`} onClick={()=>onChange({...cfg,topN:n})}>{n}</button>)}</div></div>}
-      <div><p style={{fontSize:11,color:CO.dim,marginBottom:6}}>Palette</p><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{Object.keys(PALETTES).map(name=><button key={name} className={`chip ${cfg.palette===name?"active":""}`} onClick={()=>onChange({...cfg,palette:name})} style={{fontSize:11,padding:"3px 10px"}}>{name}</button>)}</div></div>
+      <div><p style={{fontSize:11,color:CO.dim,marginBottom:6}}>Palette</p><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{Object.keys(PALETTES).map(name=><button key={name} className={`chip ${cfg.palette===name?"active":""}`} onClick={()=>{const pal=PALETTES[name]||PALETTES.Default;onChange(cfg.twoColor?{...cfg,palette:name,c1:pal[0],c2:pal[1]}:{...cfg,palette:name});}} style={{fontSize:11,padding:"3px 10px"}}>{name}</button>)}</div></div>
     </div>
     {cfg.twoColor&&<div style={{display:"flex",gap:16,marginBottom:14}}>
       <div><p style={{fontSize:11,color:CO.dim,marginBottom:4}}>{cfg.c1Label||"Color 1"}</p><input type="color" value={cfg.c1} onChange={e=>onChange({...cfg,c1:e.target.value})} style={{width:44,height:28,border:"none",borderRadius:6,cursor:"pointer"}}/></div>
@@ -708,6 +708,11 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
   });
   const upCh=(id,v)=>setCh(p=>({...p,[id]:v}));
 
+  /* Live service hours for Fig 6 preview */
+  const svcApptHrs=useMemo(()=>(apptData.filter(r=>(r["Appointment Cancelled"]||"").toLowerCase()!=="yes").reduce((a,r)=>a+(parseInt(r["Appointment Length"])||0),0)/60),[apptData]);
+  const svcCaseHrs=useMemo(()=>(caseNotesData.reduce((a,r)=>a+(parseInt(r["Duration (Case)"])||0),0)/60),[caseNotesData]);
+  const svcStudentHrs=useMemo(()=>(studentNotesData.reduce((a,r)=>a+(parseInt(r["Duration (Student)"])||0),0)/60),[studentNotesData]);
+
   useEffect(()=>{if(!rawData.length)return;const lA=allAcad.length?allAcad[allAcad.length-1]:null;const lH=allHous.length?allHous[allHous.length-1]:null;
     const apptDel=apptData.filter(r=>(r["Appointment Cancelled"]||"").toLowerCase()!=="yes");
     const apptHrsL=(apptDel.reduce((a,r)=>a+(parseInt(r["Appointment Length"])||0),0)/60).toFixed(1);
@@ -724,6 +729,14 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
       combL!=="0.0"?`OARS staff delivered ${combL} combined hours of direct and indirect student services during ${academicYear}.`:"",
     ].filter(Boolean));
   },[rawData,testRoomData,apptData,caseNotesData,studentNotesData,fS,sS]);
+
+  /* Keep services chart data live */
+  useEffect(()=>{
+    setCh(p=>{
+      const prev=p.services;
+      return {...p,services:{...prev,mkData:(c)=>{const pal=PALETTES[c.palette]||PALETTES.Default;return{labels:["Direct Appts","Case Notes","Student Notes"],datasets:[{label:"Hours",data:[parseFloat(svcApptHrs.toFixed(1)),parseFloat(svcCaseHrs.toFixed(1)),parseFloat(svcStudentHrs.toFixed(1))],backgroundColor:[pal[0],pal[1],pal[2]],borderRadius:4}]};}}};
+    });
+  },[svcApptHrs,svcCaseHrs,svcStudentHrs]);
 
   const generateDocx=async()=>{
     setGEN(true);setGS(null);setProg("Preparing...");
