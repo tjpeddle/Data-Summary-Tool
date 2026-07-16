@@ -6,6 +6,7 @@
 <title>Disability Services Report Tool</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>const _cw=console.warn.bind(console);console.warn=(...a)=>{if(a[0]&&String(a[0]).includes("in-browser Babel"))return;_cw(...a);};const _ce=console.error.bind(console);console.error=(...a)=>{if(a[0]&&String(a[0]).includes("in-browser Babel"))return;_ce(...a);};</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -218,6 +219,8 @@ function ImportTab({rawData,setRawData,testRoomData,setTestRoomData,testAccomDat
         "Class Level":String(r[3]||"").trim(),
         "_ApprovedDate":String(r[4]||"").trim(),
         "_ApprovedStatus":String(r[5]||"").trim(),
+        "Created":String(r[6]||"").trim(),
+        "Request #":String(r[7]||"").trim(),
       }));
       setIncomingData(finalData);
       setISt(s=>({...s,incoming:{ok:true,ct:finalData.length,fn:file.name}}));
@@ -1076,7 +1079,47 @@ function DirectServicesTab({apptData,fS,sS,suS}){
     <h2 style={{fontSize:26,fontWeight:800,marginBottom:6}}>Direct Service Appointments</h2>
     <p style={{fontSize:13,color:CO.muted,marginBottom:24}}>One-on-one appointments delivered by OARS staff — excludes cancelled.</p>
 
+    {/* Enrollment by type */}
+    <div style={{marginBottom:20}}>
+      <p style={{fontSize:12,color:gold,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>Enrolled in Accommodate — by Class Type</p>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:10}}>
+        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent],["Incoming",CO.muted]].map(([label,col])=>(
+          <div key={label} style={{background:CO.card,borderRadius:12,border:`1.5px solid ${col}30`,padding:"14px 16px"}}>
+            <p style={{fontSize:10,color:col,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{label}</p>
+            <p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:col}}>{(enrolledByType[label]||0).toLocaleString()}</p>
+            <p style={{fontSize:10,color:CO.dim,marginTop:2}}>enrolled</p>
+          </div>
+        ))}
+      </div>
+      <div style={{padding:"10px 16px",borderRadius:10,background:`${gold}10`,border:`1px solid ${gold}30`,display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+        <span style={{fontSize:13,fontWeight:700,color:gold}}>Total Enrolled: {totalEnrolled.toLocaleString()}</span>
+        <span style={{fontSize:11,color:CO.dim}}>unique students registered in Accommodate across all incoming groups</span>
+      </div>
+    </div>
+
+    {/* Pending requests */}
+    {totalPending>0&&<div style={{marginBottom:20}}>
+      <p style={{fontSize:12,color:pending_col,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>⏳ Pending Requests — Submitted but No Decision Yet</p>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:10}}>
+        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent],["Incoming",CO.muted]].map(([label,col])=>(
+          <div key={label} style={{background:CO.card,borderRadius:12,border:`1.5px solid ${pending_col}30`,padding:"14px 16px"}}>
+            <p style={{fontSize:10,color:pending_col,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{label}</p>
+            <p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:(pendingByType[label]||0)>0?pending_col:CO.dim}}>{(pendingByType[label]||0).toLocaleString()}</p>
+            <p style={{fontSize:10,color:CO.dim,marginTop:2}}>pending students</p>
+          </div>
+        ))}
+      </div>
+      <div style={{padding:"10px 16px",borderRadius:10,background:`${pending_col}10`,border:`1.5px solid ${pending_col}40`,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:18}}>⏳</span>
+        <div>
+          <p style={{fontSize:13,fontWeight:700,color:pending_col,marginBottom:2}}>{totalPending.toLocaleString()} students have submitted a request with no action taken yet</p>
+          <p style={{fontSize:11,color:CO.dim}}>These students have a Request # and Created date but their accommodations have not been approved or denied.</p>
+        </div>
+      </div>
+    </div>}
+
     {/* Top stat cards */}
+    <p style={{fontSize:12,color:CO.accent,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>Students with Completed Accommodation Decisions</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
       <SC label="Unique Students Served" value={uniqueStudents} color={teal}/>
       <SC label="Total Appointments" value={delivered.length} color={CO.accent}/>
@@ -1338,17 +1381,56 @@ function IndirectContactsTab({caseNotesData,studentNotesData,fS,sS,suS}){
 /* ═══ INCOMING STUDENTS TAB ═══ */
 function IncomingTab({incomingData,fS,sS}){
   const gold="#e6b94a";
+  const pending_col="#f59e0b";
   if(!incomingData.length)return<Empty msg="Import the Incoming Students file from the Import tab."/>;
 
-  // Column mapping: Name, Student ID, Requested Accommodation, Class Level, Approved(date), Approved(status)
   const sid=r=>r["Student ID"]||r["Name"]||"unknown";
   const accom=r=>r["Requested Accommodation"]||"";
   const status=r=>(r["_ApprovedStatus"]||"").toLowerCase();
   const isAppr=r=>status(r)==="approved";
   const isDen=r=>status(r)==="denied";
 
-  // Only rows that have an accommodation request
-  const withAccom=useMemo(()=>incomingData.filter(r=>accom(r).trim()),[incomingData]);
+  // Class level grouping - handles Freshman, Incoming(generic), IncomingGR, IncomingDR
+  const clGroup=r=>{
+    const cl=(r["Class Level"]||"").toLowerCase();
+    if(cl.includes("freshman"))return"Freshman";
+    if(cl.includes("dr")||cl.includes("doc"))return"Doctoral";
+    if(cl.includes("gr")||cl.includes("grad"))return"Graduate";
+    return"Incoming";
+  };
+
+  // Enrolled = ALL rows in file (unique students)
+  const allSids=useMemo(()=>{
+    const m={};
+    incomingData.forEach(r=>{const s=sid(r);if(!m[s])m[s]=clGroup(r);});
+    return m;
+  },[incomingData]);
+  const enrolledByType=useMemo(()=>{
+    const counts={Freshman:0,Graduate:0,Doctoral:0,Incoming:0};
+    Object.values(allSids).forEach(g=>{if(counts[g]!==undefined)counts[g]++;});
+    return counts;
+  },[allSids]);
+  const totalEnrolled=Object.keys(allSids).length;
+
+  // Pending = has Request# (col "Request #") but no approval date (col "_ApprovedDate")
+  const pendingRows=useMemo(()=>incomingData.filter(r=>{
+    const reqNum=r["Request #"]||r["Request#"]||r["RequestNumber"]||"";
+    const apprDate=r["_ApprovedDate"]||r["Approved"]||"";
+    const apprStatus=r["_ApprovedStatus"]||"";
+    return reqNum&&!apprDate&&!apprStatus;
+  }),[incomingData]);
+  const pendingSids=useMemo(()=>{
+    const m={};pendingRows.forEach(r=>{const s=sid(r);if(!m[s])m[s]=clGroup(r);});return m;
+  },[pendingRows]);
+  const pendingByType=useMemo(()=>{
+    const counts={Freshman:0,Graduate:0,Doctoral:0,Incoming:0};
+    Object.values(pendingSids).forEach(g=>{if(counts[g]!==undefined)counts[g]++;});
+    return counts;
+  },[pendingSids]);
+  const totalPending=Object.keys(pendingSids).length;
+
+  // Only rows that have an accommodation request with a decision
+  const withAccom=useMemo(()=>incomingData.filter(r=>accom(r).trim()&&(r["_ApprovedStatus"]||r["_ApprovedDate"])),[incomingData]);
 
   // Only students with at least one approval
   const approvedSids=useMemo(()=>new Set(withAccom.filter(isAppr).map(sid)),[withAccom]);
@@ -1479,7 +1561,47 @@ function IncomingTab({incomingData,fS,sS}){
     <h2 style={{fontSize:26,fontWeight:800,marginBottom:6}}>🎓 New Student Registrations</h2>
     <p style={{fontSize:13,color:CO.muted,marginBottom:24}}>Incoming Freshman, Graduate, and Doctoral students — only those with at least one approved accommodation shown in detail.</p>
 
+    {/* Enrollment by type */}
+    <div style={{marginBottom:20}}>
+      <p style={{fontSize:12,color:gold,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>Enrolled in Accommodate — by Class Type</p>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:10}}>
+        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent],["Incoming",CO.muted]].map(([label,col])=>(
+          <div key={label} style={{background:CO.card,borderRadius:12,border:`1.5px solid ${col}30`,padding:"14px 16px"}}>
+            <p style={{fontSize:10,color:col,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{label}</p>
+            <p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:col}}>{(enrolledByType[label]||0).toLocaleString()}</p>
+            <p style={{fontSize:10,color:CO.dim,marginTop:2}}>enrolled</p>
+          </div>
+        ))}
+      </div>
+      <div style={{padding:"10px 16px",borderRadius:10,background:`${gold}10`,border:`1px solid ${gold}30`,display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+        <span style={{fontSize:13,fontWeight:700,color:gold}}>Total Enrolled: {totalEnrolled.toLocaleString()}</span>
+        <span style={{fontSize:11,color:CO.dim}}>unique students registered in Accommodate across all incoming groups</span>
+      </div>
+    </div>
+
+    {/* Pending requests */}
+    {totalPending>0&&<div style={{marginBottom:20}}>
+      <p style={{fontSize:12,color:pending_col,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>⏳ Pending Requests — Submitted but No Decision Yet</p>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:10}}>
+        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent],["Incoming",CO.muted]].map(([label,col])=>(
+          <div key={label} style={{background:CO.card,borderRadius:12,border:`1.5px solid ${pending_col}30`,padding:"14px 16px"}}>
+            <p style={{fontSize:10,color:pending_col,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{label}</p>
+            <p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:(pendingByType[label]||0)>0?pending_col:CO.dim}}>{(pendingByType[label]||0).toLocaleString()}</p>
+            <p style={{fontSize:10,color:CO.dim,marginTop:2}}>pending students</p>
+          </div>
+        ))}
+      </div>
+      <div style={{padding:"10px 16px",borderRadius:10,background:`${pending_col}10`,border:`1.5px solid ${pending_col}40`,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:18}}>⏳</span>
+        <div>
+          <p style={{fontSize:13,fontWeight:700,color:pending_col,marginBottom:2}}>{totalPending.toLocaleString()} students have submitted a request with no action taken yet</p>
+          <p style={{fontSize:11,color:CO.dim}}>These students have a Request # and Created date but their accommodations have not been approved or denied.</p>
+        </div>
+      </div>
+    </div>}
+
     {/* Top stat cards */}
+    <p style={{fontSize:12,color:CO.accent,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>Students with Completed Accommodation Decisions</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
       <SC label="Interacted with OARS" value={uniqueTotal} color={gold}/>
       <SC label="At Least One Approved" value={uniqueApprTotal} color={CO.green} sub={`of ${uniqueTotal} who interacted`}/>
