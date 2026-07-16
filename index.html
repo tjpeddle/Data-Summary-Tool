@@ -1414,6 +1414,7 @@ function IndirectContactsTab({caseNotesData,studentNotesData,fS,sS,suS}){
 function IncomingTab({incomingData,fS,sS}){
   const gold="#e6b94a";
   const pending_col="#f59e0b";
+  const[clFilter,setClFilter]=useState("All");
   if(!incomingData.length)return<Empty msg="Import the Incoming Students file from the Import tab."/>;
 
   const sid=r=>r["Student ID"]||r["Name"]||"unknown";
@@ -1431,7 +1432,12 @@ function IncomingTab({incomingData,fS,sS}){
     return"Incoming";
   };
 
-  // Enrolled = ALL rows in file (unique students)
+  // filteredIncoming FIRST - everything downstream depends on it
+  const filteredIncoming=useMemo(()=>
+    clFilter==="All"?incomingData:incomingData.filter(r=>clGroup(r)===clFilter)
+  ,[incomingData,clFilter]);
+
+  // Enrolled = ALL rows in file (unique students) - always uses full incomingData
   const allSids=useMemo(()=>{
     const m={};
     incomingData.forEach(r=>{const s=sid(r);if(!m[s])m[s]=clGroup(r);});
@@ -1451,7 +1457,7 @@ function IncomingTab({incomingData,fS,sS}){
 
   const pipeline2026=useMemo(()=>{
     // All rows that have a Created date in 2026
-    const rows2026=incomingData.filter(r=>get2026Year(r["Created"]));
+    const rows2026=filteredIncoming.filter(r=>get2026Year(r["Created"]));
     // Build per-student summary
     const sMap={};
     rows2026.forEach(r=>{
@@ -1460,7 +1466,7 @@ function IncomingTab({incomingData,fS,sS}){
       sMap[s].rows.push(r);
     });
     return Object.values(sMap);
-  },[incomingData]);
+  },[filteredIncoming]);
 
   const pipe2026ByType=useMemo(()=>{
     const counts={Freshman:0,Graduate:0,Doctoral:0,Incoming:0};
@@ -1486,7 +1492,7 @@ function IncomingTab({incomingData,fS,sS}){
   },[pipe2026Pending]);
 
   // Legacy pending calc (all time, no Created date = no request)
-  const pendingRows=useMemo(()=>incomingData.filter(r=>{
+  const pendingRows=useMemo(()=>filteredIncoming.filter(r=>{
     const reqNum=r["Request #"]||"";
     const apprDate=r["_ApprovedDate"]||"";
     const apprStatus=r["_ApprovedStatus"]||"";
@@ -1495,7 +1501,7 @@ function IncomingTab({incomingData,fS,sS}){
   const totalPending=new Set(pendingRows.map(sid)).size;
 
   // Only rows that have an accommodation request with a decision
-  const withAccom=useMemo(()=>incomingData.filter(r=>accom(r).trim()&&(r["_ApprovedStatus"]||r["_ApprovedDate"])),[incomingData]);
+  const withAccom=useMemo(()=>filteredIncoming.filter(r=>accom(r).trim()&&(r["_ApprovedStatus"]||r["_ApprovedDate"])),[incomingData]);
 
   // Only students with at least one approval
   const approvedSids=useMemo(()=>new Set(withAccom.filter(isAppr).map(sid)),[withAccom]);
@@ -1623,8 +1629,18 @@ function IncomingTab({incomingData,fS,sS}){
   );
 
   return(<div className="fade-up">
-    <h2 style={{fontSize:26,fontWeight:800,marginBottom:6}}>🎓 New Student Registrations</h2>
-    <p style={{fontSize:13,color:CO.muted,marginBottom:24}}>Incoming Freshman, Graduate, and Doctoral students — only those with at least one approved accommodation shown in detail.</p>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
+      <div>
+        <h2 style={{fontSize:26,fontWeight:800,marginBottom:4}}>🎓 New Student Registrations</h2>
+        <p style={{fontSize:13,color:CO.muted}}>Incoming Freshman, Graduate, and Doctoral students — only those with at least one approved accommodation shown in detail.</p>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontSize:11,color:CO.muted,marginRight:4}}>Filter by type:</span>
+        {["All","Freshman","Graduate","Doctoral","Incoming"].map(f=>(
+          <button key={f} onClick={()=>setClFilter(f)} style={{fontSize:12,padding:"5px 14px",borderRadius:20,cursor:"pointer",fontWeight:600,background:clFilter===f?gold:"transparent",color:clFilter===f?"#0a0e1a":CO.muted,border:`1.5px solid ${clFilter===f?gold:CO.border}`,transition:"all .15s"}}>{f==="Incoming"?"Unclassified":f}</button>
+        ))}
+      </div>
+    </div>
 
     {/* Enrollment by type */}
     <div style={{marginBottom:20}}>
