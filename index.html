@@ -1083,7 +1083,7 @@ function DirectServicesTab({apptData,fS,sS,suS}){
     <div style={{marginBottom:20}}>
       <p style={{fontSize:12,color:gold,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>Enrolled in Accommodate — by Class Type</p>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:10}}>
-        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent],["Incoming",CO.muted]].map(([label,col])=>(
+        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent]].map(([label,col])=>(
           <div key={label} style={{background:CO.card,borderRadius:12,border:`1.5px solid ${col}30`,padding:"14px 16px"}}>
             <p style={{fontSize:10,color:col,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{label}</p>
             <p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:col}}>{(enrolledByType[label]||0).toLocaleString()}</p>
@@ -1136,7 +1136,7 @@ function DirectServicesTab({apptData,fS,sS,suS}){
 
       {/* By class type */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent],["Incoming",CO.muted]].map(([label,col])=>(
+        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent]].map(([label,col])=>(
           pipeByType[label]>0&&<div key={label} style={{background:`${col}0c`,borderRadius:8,padding:"10px 12px",border:`1px solid ${col}30`,textAlign:"center"}}>
             <p style={{fontSize:10,color:col,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>{label}</p>
             <p style={{fontSize:24,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:col}}>{pipeByType[label]}</p>
@@ -1434,30 +1434,31 @@ function IncomingTab({incomingData,fS,sS}){
 
   // Class level grouping - handles Freshman, Incoming(generic), IncomingGR, IncomingDR
   const clGroup=r=>{
-    const cl=(r["Class Level"]||"").toLowerCase();
-    if(cl.includes("freshman"))return"Freshman";
-    if(cl.includes("dr")||cl.includes("doc"))return"Doctoral";
-    if(cl.includes("gr")||cl.includes("grad"))return"Graduate";
-    return"Incoming";
+    const cl=(r["Class Level"]||"").trim().toLowerCase();
+    if(cl==="incoming - freshman"||cl==="incomingfreshman")return"Freshman";
+    if(cl==="incomingdr"||cl.includes("doc"))return"Doctoral";
+    if(cl==="incominggr"||cl.includes("grad"))return"Graduate";
+    return"Unclassified"; // plain "Incoming" or anything unrecognized
   };
 
   // filteredIncoming FIRST - everything downstream depends on it
-  const filteredIncoming=useMemo(()=>
-    clFilter==="All"?incomingData:incomingData.filter(r=>clGroup(r)===clFilter)
-  ,[incomingData,clFilter]);
+  const filteredIncoming=useMemo(()=>{
+    const base=incomingData.filter(r=>clGroup(r)!=="Incoming");
+    return clFilter==="All"?base:base.filter(r=>clGroup(r)===clFilter);
+  },[incomingData,clFilter]);
 
-  // Enrolled = ALL rows in file (unique students) - always uses full incomingData
-  const allSids=useMemo(()=>{
-    const m={};
-    incomingData.forEach(r=>{const s=sid(r);if(!m[s])m[s]=clGroup(r);});
-    return m;
-  },[incomingData]);
+  // Enrolled = ALL unique students in file - always uses full incomingData regardless of filter
   const enrolledByType=useMemo(()=>{
-    const counts={Freshman:0,Graduate:0,Doctoral:0,Incoming:0};
-    Object.values(allSids).forEach(g=>{if(counts[g]!==undefined)counts[g]++;});
-    return counts;
-  },[allSids]);
-  const totalEnrolled=Object.keys(allSids).length;
+    const sets={Freshman:new Set(),Graduate:new Set(),Doctoral:new Set(),Incoming:new Set()};
+    incomingData.forEach(r=>{
+      const s=sid(r);const g=clGroup(r);
+      if(sets[g])sets[g].add(s);
+    });
+    return {Freshman:sets.Freshman.size,Graduate:sets.Graduate.size,Doctoral:sets.Doctoral.size,Incoming:sets.Incoming.size};
+  },[incomingData]);
+  const totalEnrolled=useMemo(()=>{
+    const all=new Set();incomingData.forEach(r=>{if(clGroup(r)!=="Incoming")all.add(sid(r));});return all.size;
+  },[incomingData]);
 
   // Cohort detection: Jan-Jul of a given year = incoming pre-fall cohort for that fall
   // Oct-Dec = registered during active school year (not incoming pipeline)
@@ -1679,8 +1680,8 @@ function IncomingTab({incomingData,fS,sS}){
       </div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
         <span style={{fontSize:11,color:CO.muted,marginRight:4}}>Filter by type:</span>
-        {["All","Freshman","Graduate","Doctoral","Incoming"].map(f=>(
-          <button key={f} onClick={()=>setClFilter(f)} style={{fontSize:12,padding:"5px 14px",borderRadius:20,cursor:"pointer",fontWeight:600,background:clFilter===f?gold:"transparent",color:clFilter===f?"#0a0e1a":CO.muted,border:`1.5px solid ${clFilter===f?gold:CO.border}`,transition:"all .15s"}}>{f==="Incoming"?"Unclassified":f}</button>
+        {["All","Freshman","Graduate","Doctoral"].map(f=>(
+          <button key={f} onClick={()=>setClFilter(f)} style={{fontSize:12,padding:"5px 14px",borderRadius:20,cursor:"pointer",fontWeight:600,background:clFilter===f?gold:"transparent",color:clFilter===f?"#0a0e1a":CO.muted,border:`1.5px solid ${clFilter===f?gold:CO.border}`,transition:"all .15s"}}>{f}</button>
         ))}
       </div>
     </div>
@@ -1689,7 +1690,7 @@ function IncomingTab({incomingData,fS,sS}){
     <div style={{marginBottom:20}}>
       <p style={{fontSize:12,color:gold,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>Enrolled in Accommodate — by Class Type</p>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:10}}>
-        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent],["Incoming",CO.muted]].map(([label,col])=>(
+        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent]].map(([label,col])=>(
           <div key={label} style={{background:CO.card,borderRadius:12,border:`1.5px solid ${col}30`,padding:"14px 16px"}}>
             <p style={{fontSize:10,color:col,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{label}</p>
             <p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:col}}>{(enrolledByType[label]||0).toLocaleString()}</p>
@@ -1742,7 +1743,7 @@ function IncomingTab({incomingData,fS,sS}){
 
       {/* By class type */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent],["Incoming",CO.muted]].map(([label,col])=>(
+        {[["Freshman",CO.orange],["Graduate",CO.green],["Doctoral",CO.accent]].map(([label,col])=>(
           pipeByType[label]>0&&<div key={label} style={{background:`${col}0c`,borderRadius:8,padding:"10px 12px",border:`1px solid ${col}30`,textAlign:"center"}}>
             <p style={{fontSize:10,color:col,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>{label}</p>
             <p style={{fontSize:24,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:col}}>{pipeByType[label]}</p>
