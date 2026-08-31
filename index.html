@@ -139,6 +139,25 @@ function termCensus(rows,field){
   const c={};rows.forEach(r=>{const t=normTerm(r[field]);c[t]=(c[t]||0)+1});return c;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   SCOPING — restrict a dataset to the selected academic year's terms.
+   Every headline total is computed from the scoped rows, so the term
+   columns always sum to the total. Rows outside the year are not
+   discarded silently: they come back in `census` for the coverage strip.
+   getTerm(r) returns the canonical term for one row.
+   ═══════════════════════════════════════════════════════════════════ */
+function scopeRows(rows,getTerm,TERMS){
+  const keep=new Set(TERMS.map(t=>t.label));
+  const census={};const inScope=[];
+  rows.forEach(r=>{
+    const t=getTerm(r);
+    census[t]=(census[t]||0)+1;
+    if(keep.has(t))inScope.push(r._term===t?r:{...r,_term:t});
+  });
+  const out=Object.entries(census).filter(([k])=>!keep.has(k)).reduce((a,[,v])=>a+v,0);
+  return{rows:inScope,census,outOfScope:out};
+}
+
 function renderChartToPNG(type,data,options,width,height){
   return new Promise((resolve)=>{
     const area=document.getElementById('chart-render-area');const canvas=document.createElement('canvas');
@@ -493,20 +512,28 @@ function AT({summary,vm,onRowClick,terms=[]}){
     <td style={{textAlign:"right",fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{row.totalUnique}</td>
     <td style={{textAlign:"center",color:CO.dim,fontSize:16}}>›</td></tr>))}</tbody></table></div></div>)}
 
-/* Warns when imported rows carry a term outside the selected academic year. */
-function TermCoverage({rows,field,terms,label="records"}){
-  const census=useMemo(()=>termCensus(rows,field),[rows,field]);
+/* States what a tab's "unique students" figure is actually counting. */
+function IdentityNote({basis,detail,color=CO.accent}){
+  return(<div style={{margin:"10px 0 16px",padding:"9px 14px",borderRadius:10,background:`${color}0a`,border:`1px solid ${color}25`,display:"flex",gap:9,alignItems:"flex-start"}}>
+    <span style={{fontSize:12,color,marginTop:1}}>&#9432;</span>
+    <p style={{fontSize:11.5,color:CO.muted,lineHeight:1.6}}>Unique students counted by <strong style={{color:CO.text}}>{basis}</strong>.{detail?" "+detail:""}</p>
+  </div>);
+}
+
+/* Shows which terms the loaded rows cover, and what sits outside the year. */
+function TermCoverage({census={},terms,label="records"}){
   const known=new Set(terms.map(t=>t.label));
+  const order={};terms.forEach((t,i)=>order[t.label]=i);
   const stray=Object.entries(census).filter(([k])=>!known.has(k)).sort((a,b)=>b[1]-a[1]);
-  const inYear=Object.entries(census).filter(([k])=>known.has(k));
-  if(!rows.length)return null;
+  const inYear=Object.entries(census).filter(([k])=>known.has(k)).sort((a,b)=>order[a[0]]-order[b[0]]);
+  if(!Object.keys(census).length)return null;
   return(<div style={{margin:"12px 0",padding:"10px 14px",borderRadius:10,background:stray.length?`${CO.yellow}0e`:`${CO.green}0a`,border:`1px solid ${stray.length?CO.yellow+"40":CO.green+"25"}`}}>
     <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
       <span style={{fontSize:11,color:stray.length?CO.yellow:CO.green,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>{stray.length?"⚠ Term coverage":"✓ Term coverage"}</span>
       {inYear.map(([k,v])=><span key={k} style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:`${CO.green}18`,border:`1px solid ${CO.green}35`,color:CO.green,fontWeight:600}}>{k}: {v.toLocaleString()}</span>)}
       {stray.map(([k,v])=><span key={k} style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:`${CO.yellow}18`,border:`1px solid ${CO.yellow}40`,color:CO.yellow,fontWeight:600}}>outside year — {k}: {v.toLocaleString()}</span>)}
     </div>
-    {stray.length>0&&<p style={{fontSize:10.5,color:CO.dim,marginTop:6}}>These {label} sit outside the selected academic year, so they are excluded from the per-term columns. They are still counted in Total Unique and the Year view.</p>}
+    {stray.length>0&&<p style={{fontSize:10.5,color:CO.dim,marginTop:6}}>These {label} fall outside the selected academic year and are <strong style={{color:CO.yellow}}>excluded from every figure on this tab</strong>, including the totals. Change the Academic Year, or turn on the summer toggle in the header, to bring them in.</p>}
   </div>);
 }
 function StatBlock({label,val,color,size=22}){return(<div style={{textAlign:"center"}}><p style={{fontSize:10,color:CO.dim,textTransform:"uppercase",letterSpacing:".06em",marginBottom:2,whiteSpace:"nowrap"}}>{label}</p><p style={{fontSize:size,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color}}>{typeof val==="number"?val.toLocaleString():val}</p></div>);}
@@ -543,7 +570,7 @@ function useTermCounts(rows,terms,sidFn,field="Semester (course)"){
   },[rows,terms,field]);
 }
 
-function AcadTab({rawData,T,TERMS}){
+function AcadTab({rawData,census,T,TERMS}){
   const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);
   const s=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),TERMS,null),[rawData,T]);
   const sid=r=>r["Student ID"]||r["Name"];
@@ -554,7 +581,8 @@ function AcadTab({rawData,T,TERMS}){
   if(!rawData.length)return<Empty/>;
   return(<div className="fade-up"><SummaryPanel panel={panel} onClose={()=>setPanel(null)} TERMS={TERMS}/>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><h2 style={{fontSize:26,fontWeight:800}}>Academic Accommodations</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div>
-    <TermCoverage rows={acadRows} field="Semester (course)" terms={TERMS} label="accommodation records"/>
+    <TermCoverage census={census} terms={TERMS} label="accommodation records"/>
+    <IdentityNote basis="student name" detail="This export has no student ID column, so two students sharing a name would merge into one."/>
     <p style={{fontSize:13,color:CO.accent,marginBottom:12}}>Click any row to view a detailed summary ›</p>
     <AT summary={s} vm={vm} terms={TERMS} onRowClick={row=>setPanel({title:"Academic Accommodation",type:"accommodation",row})}/>
     <TotalFooter approvedAll={apprAll} interactAll={intAll} color={CO.accent}
@@ -563,7 +591,7 @@ function AcadTab({rawData,T,TERMS}){
   </div>);
 }
 
-function HousingTab({rawData,T,TERMS}){
+function HousingTab({rawData,census,T,TERMS}){
   const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);
   const s=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),TERMS,cHN),[rawData,T]);
   const sid=r=>r["Student ID"]||r["Name"];
@@ -574,7 +602,8 @@ function HousingTab({rawData,T,TERMS}){
   if(!rawData.length)return<Empty/>;
   return(<div className="fade-up"><SummaryPanel panel={panel} onClose={()=>setPanel(null)} TERMS={TERMS}/>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><h2 style={{fontSize:26,fontWeight:800}}>Housing Report</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div>
-    <TermCoverage rows={housRows} field="Semester (course)" terms={TERMS} label="housing records"/>
+    <TermCoverage census={census} terms={TERMS} label="housing records"/>
+    <IdentityNote basis="student name" color={CO.purple} detail="This export has no student ID column, so two students sharing a name would merge into one."/>
     <p style={{fontSize:13,color:CO.accent,marginBottom:12}}>Click any row to view a detailed summary ›</p>
     <AT summary={s} vm={vm} terms={TERMS} onRowClick={row=>setPanel({title:"Housing Accommodation",type:"accommodation",row})}/>
     <TotalFooter approvedAll={apprAll} interactAll={intAll} color={CO.purple}
@@ -583,7 +612,7 @@ function HousingTab({rawData,T,TERMS}){
   </div>);
 }
 
-function TestTab({testRoomData,testAccomData,T,TERMS}){
+function TestTab({testRoomData,bookCensus,testAccomData,accomCensus,T,TERMS}){
   const[panel,setPanel]=useState(null);
   const[vm,sVM]=useState("semester");
   const hasAccom=testAccomData.length>0;
@@ -632,7 +661,7 @@ function TestTab({testRoomData,testAccomData,T,TERMS}){
             <SC label="Approved" value={accomApprAll} color={CO.green}/>
             {accomTC.map(t=><SC key={t.label} label={`${shortTerm(t.label,TERMS)} Approved`} value={t.approved} color={t.col}/>)}
           </div>
-          <TermCoverage rows={testAccomData} field="Semester (course)" terms={TERMS} label="testing accommodation records"/>
+          <TermCoverage census={accomCensus} terms={TERMS} label="testing accommodation records"/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <p style={{fontSize:13,color:CO.dim}}>Click any row for a detailed summary &rsaquo;</p>
             <div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")} style={{padding:"7px 16px",fontSize:12}}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")} style={{padding:"7px 16px",fontSize:12}}>Year</button></div>
@@ -660,7 +689,7 @@ function TestTab({testRoomData,testAccomData,T,TERMS}){
             <SC label="Cancelled" value={cancelled} color={CO.red} sub={`${((cancelled/bookings.length)*100).toFixed(1)}%`}/>
             <SC label="Unique Students" value={uniqueAll} color={CO.yellow}/>
           </div>
-          <TermCoverage rows={bookings} field="_term" terms={TERMS} label="exam bookings"/>
+          <TermCoverage census={bookCensus} terms={TERMS} label="exam bookings"/>
           <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(shownTerms.length,4)},1fr)`,gap:12,marginBottom:4}}>
             {shownTerms.map(t=>(
               <div key={t.label} style={{padding:"16px 18px",borderRadius:12,background:`${t.col}0c`,border:`1px solid ${CO.border}`}}>
@@ -1153,7 +1182,7 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
 }
 
 /* ═══ DIRECT SERVICES TAB ═══ */
-function DirectServicesTab({apptData,T,TERMS}){
+function DirectServicesTab({apptData,census,T,TERMS}){
   const teal="#22c5c5";
   const mins=r=>parseInt(r["Appointment Length"])||0;
   const sid=r=>r["Symplicity Student ID"]||r["Student ID"]||r["Name"]||"unknown";
@@ -1191,12 +1220,13 @@ function DirectServicesTab({apptData,T,TERMS}){
     <h2 style={{fontSize:26,fontWeight:800,marginBottom:6}}>Direct Service Appointments</h2>
     <p style={{fontSize:13,color:CO.muted,marginBottom:14}}>One-on-one appointments delivered by OARS staff &mdash; excludes cancelled. Terms are derived from <strong style={{color:CO.text}}>AppointmentDate</strong>, so June&ndash;July dates land in Summer.</p>
 
-    <TermCoverage rows={rows} field="_term" terms={TERMS} label="appointments"/>
+    <TermCoverage census={census} terms={TERMS} label="appointments"/>
+    <IdentityNote basis="Symplicity Student ID" color="#22c5c5" detail="This export carries no student name, so these students cannot be matched to the names in the Academic & Housing file. Add a Name column to the Accommodate export if you need to identify them."/>
 
     {/* Top stat cards */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
       <SC label="Unique Students Served" value={uniqueStudents} color={teal}/>
-      <SC label="Total Appointments" value={delivered.length} color={CO.accent} sub={inYearAppts!==delivered.length?`${inYearAppts.toLocaleString()} within ${TERMS.length} listed terms`:null}/>
+      <SC label="Total Appointments" value={delivered.length} color={CO.accent} sub={`${byTerm.filter(t=>t.appts).map(t=>shortTerm(t.label,TERMS)).join(" + ")} combined`}/>
       <SC label="Total Hours of Service" value={totalHrs} color={CO.green}/>
       <SC label="Cancelled" value={cancelled.length} color={CO.red} sub={apptData.length?`${((cancelled.length/apptData.length)*100).toFixed(1)}% of all`:""}/>
     </div>
@@ -1292,7 +1322,7 @@ function DirectServicesTab({apptData,T,TERMS}){
 }
 
 /* ═══ INDIRECT CONTACTS TAB ═══ */
-function IndirectContactsTab({caseNotesData,studentNotesData,T,TERMS}){
+function IndirectContactsTab({caseNotesData,studentNotesData,census={},census2={},T,TERMS}){
   const pink="#c522a0";const amber="#c57a22";const combined="#7a5cf0";
   if(!caseNotesData.length&&!studentNotesData.length)return<Empty msg="Import Case Notes and/or Student Notes files from the Import tab."/>;
 
@@ -1312,6 +1342,7 @@ function IndirectContactsTab({caseNotesData,studentNotesData,T,TERMS}){
   const caseRows=useMemo(()=>caseNotesData.map(r=>({...r,_src:"Case Notes",_sid:getSid(r),_staff:getStaff(r),_cat:getCat(r),_dur:getDur(r),_sem:getSem(r)})),[caseNotesData]);
   const studentRows=useMemo(()=>studentNotesData.map(r=>({...r,_src:"Student Notes",_sid:getSid(r),_staff:getStaff(r),_cat:getCat(r),_dur:getDur(r),_sem:getSem(r)})),[studentNotesData]);
   const all=useMemo(()=>[...caseRows,...studentRows],[caseRows,studentRows]);
+  const mergedCensus=useMemo(()=>{const m={...census};Object.entries(census2).forEach(([k,v])=>m[k]=(m[k]||0)+v);return m},[census,census2]);
 
   // Totals
   const totalRecords=all.length;
@@ -1342,7 +1373,8 @@ function IndirectContactsTab({caseNotesData,studentNotesData,T,TERMS}){
   return(<div className="fade-up">
     <h2 style={{fontSize:26,fontWeight:800,marginBottom:6}}>Indirect Contacts</h2>
     <p style={{fontSize:13,color:CO.muted,marginBottom:10}}>Case Notes + Student Notes combined &mdash; emails, phone calls, remote contacts, and case work on students' behalf. Terms are derived from the created date, so June&ndash;July contacts land in Summer.</p>
-    <TermCoverage rows={all} field="_sem" terms={TERMS} label="indirect contacts"/>
+    <TermCoverage census={mergedCensus} terms={TERMS} label="indirect contacts"/>
+    <IdentityNote basis="Symplicity Student ID" color="#7a5cf0" detail="Same identifier as Direct Services, so those two tabs can be compared with each other — but not with the name-based Academic, Housing or Testing tabs."/>
 
     {/* Top stat cards */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
@@ -1910,8 +1942,8 @@ function App(){
      actively enrolled coursework. ─────────────────────────────────────── */
   const enrollAvailable=hasEnrolledCol(rawData)||hasEnrolledCol(testAccomData);
   const notEnrolledCount=useMemo(()=>[...rawData,...testAccomData].filter(r=>hasEnrolledCol([r])&&!isEnrolled(r)).length,[rawData,testAccomData]);
-  const rawF=useMemo(()=>applyEnrolled(rawData,enrolledOnly),[rawData,enrolledOnly]);
-  const testAccomF=useMemo(()=>applyEnrolled(testAccomData,enrolledOnly),[testAccomData,enrolledOnly]);
+  const rawE=useMemo(()=>applyEnrolled(rawData,enrolledOnly),[rawData,enrolledOnly]);
+  const testAccomE=useMemo(()=>applyEnrolled(testAccomData,enrolledOnly),[testAccomData,enrolledOnly]);
 
   /* ── Leading-summer detection ─────────────────────────────────────────
      Summer {ys} (e.g. Summer 2025) sits BEFORE the fall term. Some exports
@@ -1919,12 +1951,12 @@ function App(){
      for it are actually present. ──────────────────────────────────────── */
   const preSummerCount=useMemo(()=>{
     let n=0;
-    [rawF,testAccomF].forEach(ds=>ds.forEach(r=>{if(normTerm(r["Semester (course)"])===suPre)n++}));
+    [rawE,testAccomE].forEach(ds=>ds.forEach(r=>{if(normTerm(r["Semester (course)"])===suPre)n++}));
     testRoomData.forEach(r=>{if(normTerm(r["Semester"])===suPre)n++});
     apptData.forEach(r=>{if(semOf(r["AppointmentDate"])===suPre)n++});
     [...caseNotesData,...studentNotesData].forEach(r=>{if(semOf(r["Created"]||r["Date Created (Student)"])===suPre)n++});
     return n;
-  },[rawF,testAccomF,testRoomData,apptData,caseNotesData,studentNotesData,suPre]);
+  },[rawE,testAccomE,testRoomData,apptData,caseNotesData,studentNotesData,suPre]);
   const preSummerAvailable=preSummerCount>0;
   const showPreSummer=preSummerAvailable&&inclPreSummer;
 
@@ -1936,6 +1968,20 @@ function App(){
     {key:"spring",label:sS,col:CO.green},
     {key:"summer",label:suS,col:CO.yellow},
   ],[showPreSummer,suPre,fS,wS,sS,suS]);
+
+  /* ── Scope every dataset to the active terms ──────────────────────────
+     This is what makes the toggles mean something: totals are computed
+     from scoped rows, so Fall + Winter + Spring + Summer always equals
+     the Total. Anything outside the year is reported, not silently kept. */
+  const semField=r=>normTerm(r["Semester (course)"]);
+  const acadS =useMemo(()=>scopeRows(rawE,semField,TERMS),[rawE,TERMS]);
+  const taS   =useMemo(()=>scopeRows(testAccomE,semField,TERMS),[testAccomE,TERMS]);
+  const bookS =useMemo(()=>scopeRows(testRoomData,r=>normTerm(r["Semester"]!==undefined&&r["Semester"]!==""?r["Semester"]:(r["Date"]||r["Exam Date"]||r["AppointmentDate"])),TERMS),[testRoomData,TERMS]);
+  const apptS =useMemo(()=>scopeRows(apptData,r=>semOf(r["AppointmentDate"]),TERMS),[apptData,TERMS]);
+  const cnS   =useMemo(()=>scopeRows(caseNotesData,r=>semOf(r["Created"]),TERMS),[caseNotesData,TERMS]);
+  const snS   =useMemo(()=>scopeRows(studentNotesData,r=>semOf(r["Date Created (Student)"]),TERMS),[studentNotesData,TERMS]);
+  const rawF=acadS.rows, testAccomF=taS.rows;
+  const totalExcluded=acadS.outOfScope+taS.outOfScope+bookS.outOfScope+apptS.outOfScope+cnS.outOfScope+snS.outOfScope;
 
   /* Auto-save each dataset to localStorage when it changes */
   useEffect(()=>{lsSave(LS_KEYS.raw,rawData);},[rawData]);
@@ -1977,7 +2023,7 @@ function App(){
       let testBooked=0,testDelivered=0,testCancelled=0;
       const termList=TERMS.map(t=>t.label);
       const testsByTerm={};termList.forEach(t=>testsByTerm[t]=0);
-      testRoomData.forEach(r=>{testBooked++;const c=(r["Appointment Cancelled"]||"").toLowerCase()==="yes";if(!c)testDelivered++;else testCancelled++;
+      bookS.rows.forEach(r=>{testBooked++;const c=(r["Appointment Cancelled"]||"").toLowerCase()==="yes";if(!c)testDelivered++;else testCancelled++;
         const t=normTerm(r["Semester"]);if(testsByTerm[t]!==undefined)testsByTerm[t]++;});
       const gT=l=>testsByTerm[l]||0;
       const fallTests=gT(`Fall ${ys}`),winterTests=gT(`Winter ${ys}`),springTests=gT(`Spring ${ys+1}`),summerTests=gT(`Summer ${ys+1}`);
@@ -1985,13 +2031,13 @@ function App(){
       // Appts — total plus a per-term split derived from AppointmentDate
       let apptCount=0,apptMins=0;
       const apptByTerm={};termList.forEach(t=>apptByTerm[t]={n:0,mins:0});
-      apptData.forEach(r=>{if((r["Appointment Cancelled"]||"").toLowerCase()!=="yes"){
+      apptS.rows.forEach(r=>{if((r["Appointment Cancelled"]||"").toLowerCase()!=="yes"){
         const m=parseInt(r["Appointment Length"])||0;apptCount++;apptMins+=m;
         const t=semOf(r["AppointmentDate"]);if(apptByTerm[t]){apptByTerm[t].n++;apptByTerm[t].mins+=m;}}});
       const apptTermRows=termList.map(t=>({label:t,n:apptByTerm[t].n,hrs:(apptByTerm[t].mins/60).toFixed(1)}));
       // Notes
       let notesMins=0,notesCount=0;
-      [...caseNotesData,...studentNotesData].forEach(r=>{notesCount++;notesMins+=parseInt(r["Duration (Case)"]||r["Duration (Student)"])||0;});
+      [...cnS.rows,...snS.rows].forEach(r=>{notesCount++;notesMins+=parseInt(r["Duration (Case)"]||r["Duration (Student)"])||0;});
       // Incoming
       const inWith=incomingData.filter(r=>(r["Requested Accommodation"]||"").trim());
       const inApprSids=new Set(inWith.filter(r=>(r["_ApprovedStatus"]||"").toLowerCase()==="approved").map(r=>r["Student ID"]||r["Name"]));
@@ -2001,14 +2047,14 @@ function App(){
         acadArr,housArr,
         testBooked,testDelivered,testCancelled,fallTests,springTests,summerTests,winterTests,testsByTerm,testAccomApproved,
         apptTermRows,
-        apptCount,apptHrs:apptData.length?(apptMins/60).toFixed(1):null,
+        apptCount,apptHrs:apptS.rows.length?(apptMins/60).toFixed(1):null,
         notesCount,notesHrs:notesCount?(notesMins/60).toFixed(1):null,
-        hasAppt:apptData.length>0,hasNotes:notesCount>0,hasTest:testRoomData.length>0,hasIncoming:incomingData.length>0,
+        hasAppt:apptS.rows.length>0,hasNotes:notesCount>0,hasTest:bookS.rows.length>0,hasIncoming:incomingData.length>0,
         inTotal:inAllSids.size,inApproved:inApprSids.size,
       });
     },100);
     return()=>clearTimeout(tid);
-  },[rawF,testRoomData,testAccomF,apptData,caseNotesData,studentNotesData,incomingData,ay,TERMS]);
+  },[rawF,bookS,testAccomF,apptS,cnS,snS,incomingData,ay,TERMS]);
   const[iSt,setISt]=useState({raw:null,test:null,testaccom:null,appt:null,casenotes:null,studentnotes:null,incoming:null});const[ld,setLd]=useState(false);
   const tabs=[
     {id:"import",label:"Import Data",icon:"↑"},
@@ -2053,17 +2099,20 @@ function App(){
           <p style={{fontSize:11.5,color:CO.muted,lineHeight:1.6}}>1. Import data<br/>2. Review tabs<br/>3. <strong style={{color:CO.accent}}>Generate report</strong></p></div>
       </nav>
       <main style={{flex:1,padding:28,overflow:"auto"}}>
+        {totalExcluded>0&&tab!=="import"&&<div style={{marginBottom:16,padding:"10px 16px",borderRadius:10,background:`${CO.yellow}0e`,border:`1px solid ${CO.yellow}35`,fontSize:12,color:CO.muted}}>
+          <strong style={{color:CO.yellow}}>{totalExcluded.toLocaleString()} records</strong> fall outside {ay} and are excluded from every figure below.{preSummerAvailable&&!inclPreSummer?` ${preSummerCount.toLocaleString()} of them are ${suPre} — use the toggle above to include that term.`:""}
+        </div>}
         {tab==="import"&&<ImportTab rawData={rawData} setRawData={setRawData} testRoomData={testRoomData} setTestRoomData={setTestRoomData} testAccomData={testAccomData} setTestAccomData={setTestAccomData} apptData={apptData} setApptData={setApptData} caseNotesData={caseNotesData} setCaseNotesData={setCaseNotesData} studentNotesData={studentNotesData} setStudentNotesData={setStudentNotesData} incomingData={incomingData} setIncomingData={setIncomingData} iSt={iSt} setISt={setISt} ld={ld} setLd={setLd} onClearAll={()=>{if(!window.confirm("Clear all cached data? You will need to re-import your files."))return;[setRawData,setTestRoomData,setTestAccomData,setApptData,setCaseNotesData,setStudentNotesData,setIncomingData].forEach(fn=>fn([]));try{Object.values({raw:"oars_raw",test:"oars_test",testAccom:"oars_testAccom",appt:"oars_appt",caseNotes:"oars_caseNotes",studentNotes:"oars_studentNotes",incoming:"oars_incoming"}).forEach(k=>localStorage.removeItem(k));}catch(e){}setISt({});}}/>}
-        {tab==="summary"&&<ExecTab execStats={execStats} TERMS={TERMS} fS={fS} sS={sS} hasTest={testRoomData.length>0} hasAppt={apptData.length>0} hasNotes={caseNotesData.length>0||studentNotesData.length>0} hasIncoming={incomingData.length>0}/>}
-        {tab==="academic"&&<AcadTab rawData={rawF} T={T} TERMS={TERMS}/>}
-        {tab==="housing"&&<HousingTab rawData={rawF} T={T} TERMS={TERMS}/>}
-        {tab==="testroom"&&<TestTab testRoomData={testRoomData} testAccomData={testAccomF} T={T} TERMS={TERMS}/>}
-        {tab==="appointments"&&<DirectServicesTab apptData={apptData} T={T} TERMS={TERMS}/>}
-        {tab==="indirect"&&<IndirectContactsTab caseNotesData={caseNotesData} studentNotesData={studentNotesData} T={T} TERMS={TERMS}/>}
+        {tab==="summary"&&<ExecTab execStats={execStats} TERMS={TERMS} fS={fS} sS={sS} hasTest={bookS.rows.length>0} hasAppt={apptS.rows.length>0} hasNotes={cnS.rows.length>0||snS.rows.length>0} hasIncoming={incomingData.length>0}/>}
+        {tab==="academic"&&<AcadTab rawData={rawF} census={acadS.census} T={T} TERMS={TERMS}/>}
+        {tab==="housing"&&<HousingTab rawData={rawF} census={acadS.census} T={T} TERMS={TERMS}/>}
+        {tab==="testroom"&&<TestTab testRoomData={bookS.rows} bookCensus={bookS.census} testAccomData={testAccomF} accomCensus={taS.census} T={T} TERMS={TERMS}/>}
+        {tab==="appointments"&&<DirectServicesTab apptData={apptS.rows} census={apptS.census} T={T} TERMS={TERMS}/>}
+        {tab==="indirect"&&<IndirectContactsTab caseNotesData={cnS.rows} studentNotesData={snS.rows} census={{...cnS.census}} census2={{...snS.census}} T={T} TERMS={TERMS}/>}
         {tab==="incoming"&&<IncomingTab incomingData={incomingData} T={T} TERMS={TERMS}/>}
-        {tab==="students"&&<StudTab rawData={rawF} testRoomData={testRoomData} testAccomData={testAccomF} apptData={apptData} incomingData={incomingData} T={T} TERMS={TERMS}/>}
+        {tab==="students"&&<StudTab rawData={rawF} testRoomData={bookS.rows} testAccomData={testAccomF} apptData={apptData} incomingData={incomingData} T={T} TERMS={TERMS}/>}
         {tab==="export"&&<ExpTab rawData={rawF} T={T} TERMS={TERMS}/>}
-        {tab==="generate"&&<GenReportTab rawData={rawF} testRoomData={testRoomData} testAccomData={testAccomF} apptData={apptData} caseNotesData={caseNotesData} studentNotesData={studentNotesData} incomingData={incomingData} T={T} TERMS={TERMS} fS={fS} sS={sS} suS={suS} academicYear={ay}/>}
+        {tab==="generate"&&<GenReportTab rawData={rawF} testRoomData={bookS.rows} testAccomData={testAccomF} apptData={apptS.rows} caseNotesData={cnS.rows} studentNotesData={snS.rows} incomingData={incomingData} T={T} TERMS={TERMS} fS={fS} sS={sS} suS={suS} academicYear={ay}/>}
       </main></div></div>);
 }
 
