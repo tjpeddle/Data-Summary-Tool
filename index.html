@@ -113,22 +113,26 @@ function normTerm(v){
   return asDate==="Unknown"?s:asDate;
 }
 
-/* Build accommodation summary. T = {fS,wS,sS,suS} canonical term names. */
-function bSum(data,T,cFn){
-  const KEY={[T.fS]:"f",[T.wS]:"w",[T.sS]:"s",[T.suS]:"u"};
+/* Build accommodation summary, driven entirely by the TERMS array. */
+function bSum(data,TERMS,cFn){
+  const KEY={};TERMS.forEach(t=>KEY[t.label]=t.key);
   const acc={};data.forEach(r=>{const raw=r["Requested Accommodation"]||"";const a=cFn?cFn(raw):raw;const st=(r["Approved"]||"").toLowerCase();const sem=normTerm(r["Semester (course)"]);const sid=r["Student ID"]||r["Name"];if(!a)return;
-    if(!acc[a])acc[a]={name:a,fA:new Set(),fD:new Set(),wA:new Set(),wD:new Set(),sA:new Set(),sD:new Set(),uA:new Set(),uD:new Set(),tot:new Set(),yA:new Set(),yD:new Set()};
+    if(!acc[a]){acc[a]={name:a,tot:new Set(),yA:new Set(),yD:new Set(),t:{}};TERMS.forEach(t=>acc[a].t[t.key]={A:new Set(),D:new Set()});}
     const x=acc[a];x.tot.add(sid);
     const k=KEY[sem];
-    if(k){if(st==="approved")x[k+"A"].add(sid);else if(st==="denied")x[k+"D"].add(sid)}
+    if(k){if(st==="approved")x.t[k].A.add(sid);else if(st==="denied")x.t[k].D.add(sid)}
     if(st==="approved")x.yA.add(sid);else if(st==="denied")x.yD.add(sid)});
-  return Object.values(acc).map(a=>({name:a.name,
-    fallApproved:a.fA.size,fallDenied:a.fD.size,
-    winterApproved:a.wA.size,winterDenied:a.wD.size,
-    springApproved:a.sA.size,springDenied:a.sD.size,
-    summerApproved:a.uA.size,summerDenied:a.uD.size,
-    totalUnique:a.tot.size,calApproved:a.yA.size,calDenied:a.yD.size})).sort((a,b)=>b.totalUnique-a.totalUnique);
+  return Object.values(acc).map(a=>{
+    const o={name:a.name,totalUnique:a.tot.size,calApproved:a.yA.size,calDenied:a.yD.size};
+    TERMS.forEach(t=>{o[t.key+"Approved"]=a.t[t.key].A.size;o[t.key+"Denied"]=a.t[t.key].D.size});
+    return o;
+  }).sort((a,b)=>b.totalUnique-a.totalUnique);
 }
+
+/* Enrolled flag — files that carry an "Enrolled" column mark each course row Yes/No. */
+function hasEnrolledCol(rows){return rows.length>0&&Object.keys(rows[0]).some(k=>k.trim().toLowerCase()==="enrolled")}
+function isEnrolled(r){const v=r["Enrolled"];return v===undefined||v===null||v===""?true:String(v).trim().toLowerCase()!=="no"}
+function applyEnrolled(rows,on){return(on&&hasEnrolledCol(rows))?rows.filter(isEnrolled):rows}
 
 /* Which terms actually appear in a dataset — so nothing is silently dropped. */
 function termCensus(rows,field){
@@ -235,7 +239,7 @@ function SummaryPanel({panel,onClose,TERMS=[]}){
       </div>
       <div style={{background:CO.bg,borderRadius:10,border:`1px solid ${CO.border}`,overflow:"hidden",maxHeight:320,overflowY:"auto"}}>
         <table style={{width:"100%"}}>
-          <thead><tr><th>Class Level</th>{terms.map(t=><th key={t.label} style={{textAlign:"right",color:t.col}}>{shortTerm(t.label)}</th>)}<th style={{textAlign:"right"}}>Total</th></tr></thead>
+          <thead><tr><th>Class Level</th>{terms.map(t=><th key={t.label} style={{textAlign:"right",color:t.col}}>{shortTerm(t.label,terms)}</th>)}<th style={{textAlign:"right"}}>Total</th></tr></thead>
           <tbody>{lvls.map(cl=><tr key={cl}><td style={{fontWeight:500}}>{cl}</td>{terms.map(t=><td key={t.label} style={{textAlign:"right"}}>{((byTerm[t.label]||{})[cl]||0).toLocaleString()}</td>)}<td style={{textAlign:"right",fontWeight:700,color:CO.accent}}>{(all[cl]||0).toLocaleString()}</td></tr>)}</tbody>
         </table>
       </div>
@@ -459,9 +463,16 @@ function ExecTab({execStats,TERMS=[],fS,sS,hasTest,hasAppt,hasNotes,hasIncoming,
 
 
 
-/* Short column header, e.g. "Fall 2025" → "Fall" (the year lives in the tab header) */
-const TERM_ABBR={Fall:"Fall",Winter:"Winter",Spring:"Spring",Summer:"Summer"};
-function shortTerm(l){const w=String(l||"").split(" ")[0];return TERM_ABBR[w]||w}
+/* Short column header. "Fall 2025" → "Fall"; but when two terms share a season
+   (Summer 2025 and Summer 2026 both present) the year is kept to disambiguate. */
+function shortTerm(l,terms){
+  const p=String(l||"").split(" "),season=p[0],yr=p[1];
+  if(terms&&yr){
+    const dupes=terms.filter(t=>String(t.label||"").split(" ")[0]===season).length;
+    if(dupes>1)return`${season} '${yr.slice(2)}`;
+  }
+  return season;
+}
 
 function AT({summary,vm,onRowClick,terms=[]}){
   const active=terms.filter(t=>summary.some(r=>r[t.key+"Approved"]||r[t.key+"Denied"]));
@@ -469,7 +480,7 @@ function AT({summary,vm,onRowClick,terms=[]}){
   return(<div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden"}}><div style={{overflow:"auto",maxHeight:"65vh"}}><table><thead><tr>
     <th style={{minWidth:280}}>Accommodation</th>
     {vm==="semester"
-      ?cols.map(t=>[<th key={t.key+"a"} style={{textAlign:"right",color:t.col}}>{shortTerm(t.label)} Appr</th>,<th key={t.key+"d"} style={{textAlign:"right"}}>{shortTerm(t.label)} Den</th>])
+      ?cols.map(t=>[<th key={t.key+"a"} style={{textAlign:"right",color:t.col}}>{shortTerm(t.label,cols)} Appr</th>,<th key={t.key+"d"} style={{textAlign:"right"}}>{shortTerm(t.label,cols)} Den</th>])
       :<><th style={{textAlign:"right"}}>Approved</th><th style={{textAlign:"right"}}>Denied</th></>}
     <th style={{textAlign:"right"}}>Total Unique</th><th style={{width:60}}></th></tr></thead>
   <tbody>{summary.map((row,i)=>(<tr key={i} className="row-clickable" onClick={()=>onRowClick&&onRowClick(row)}>
@@ -534,7 +545,7 @@ function useTermCounts(rows,terms,sidFn,field="Semester (course)"){
 
 function AcadTab({rawData,T,TERMS}){
   const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);
-  const s=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),T,null),[rawData,T]);
+  const s=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),TERMS,null),[rawData,T]);
   const sid=r=>r["Student ID"]||r["Name"];
   const acadRows=useMemo(()=>rawData.filter(r=>isA(r["Requested Accommodation"])),[rawData]);
   const tc=useTermCounts(acadRows,TERMS,sid);
@@ -554,7 +565,7 @@ function AcadTab({rawData,T,TERMS}){
 
 function HousingTab({rawData,T,TERMS}){
   const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);
-  const s=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),T,cHN),[rawData,T]);
+  const s=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),TERMS,cHN),[rawData,T]);
   const sid=r=>r["Student ID"]||r["Name"];
   const housRows=useMemo(()=>rawData.filter(r=>isH(r["Requested Accommodation"])),[rawData]);
   const tc=useTermCounts(housRows,TERMS,sid);
@@ -580,7 +591,7 @@ function TestTab({testRoomData,testAccomData,T,TERMS}){
   const sid=r=>r["Student ID"]||r["Name"];
 
   // ── Testing accommodations (semester-labeled file) ──
-  const accomSummary=useMemo(()=>bSum(testAccomData,T,null),[testAccomData,T]);
+  const accomSummary=useMemo(()=>bSum(testAccomData,TERMS,null),[testAccomData,T]);
   const accomTC=useTermCounts(testAccomData,TERMS,sid);
   const accomApprAll=useMemo(()=>new Set(testAccomData.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").map(sid)).size,[testAccomData]);
   const accomIntAll=useMemo(()=>new Set(testAccomData.map(sid)).size,[testAccomData]);
@@ -619,7 +630,7 @@ function TestTab({testRoomData,testAccomData,T,TERMS}){
           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:12,marginBottom:14}}>
             <SC label="Unique Students" value={accomIntAll} color={CO.orange}/>
             <SC label="Approved" value={accomApprAll} color={CO.green}/>
-            {accomTC.map(t=><SC key={t.label} label={`${shortTerm(t.label)} Approved`} value={t.approved} color={t.col}/>)}
+            {accomTC.map(t=><SC key={t.label} label={`${shortTerm(t.label,TERMS)} Approved`} value={t.approved} color={t.col}/>)}
           </div>
           <TermCoverage rows={testAccomData} field="Semester (course)" terms={TERMS} label="testing accommodation records"/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -791,7 +802,7 @@ function StudTab({rawData,testRoomData,testAccomData,apptData,incomingData,T,TER
     {/* Enrollment by class level table */}
     <p style={{fontSize:13,color:CO.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em",marginBottom:12}}>Enrollment by Class Level</p>
     <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden"}}>
-      <div style={{overflow:"auto"}}><table><thead><tr><th>Class Level</th>{TERMS.map(t=><th key={t.label} style={{textAlign:"right",color:t.col}}>{shortTerm(t.label)}</th>)}<th style={{textAlign:"right"}}>All</th></tr></thead>
+      <div style={{overflow:"auto"}}><table><thead><tr><th>Class Level</th>{TERMS.map(t=><th key={t.label} style={{textAlign:"right",color:t.col}}>{shortTerm(t.label,TERMS)}</th>)}<th style={{textAlign:"right"}}>All</th></tr></thead>
       <tbody>{lvls.filter(cl=>all[cl]).map(cl=><tr key={cl}><td>{cl}</td>{TERMS.map(t=><td key={t.label} style={{textAlign:"right"}}>{(byTerm[t.label]||{})[cl]||0}</td>)}<td style={{textAlign:"right",fontWeight:700}}>{all[cl]||0}</td></tr>)}
       <tr style={{background:`${CO.accent}0c`}}><td style={{fontWeight:700}}>TOTAL</td>{TERMS.map(t=><td key={t.label} style={{textAlign:"right",fontWeight:700}}>{tot(byTerm[t.label]||{})}</td>)}<td style={{textAlign:"right",fontWeight:700,color:CO.accent}}>{tot(all)}</td></tr>
       </tbody></table></div>
@@ -800,8 +811,8 @@ function StudTab({rawData,testRoomData,testAccomData,apptData,incomingData,T,TER
 }
 function ExpTab({rawData,T,TERMS}){if(!rawData.length)return<Empty msg="Import data first."/>;
   const shape=a=>{const o={Accommodation:a.name};TERMS.forEach(t=>{o[`${t.label} Approved`]=a[t.key+"Approved"];o[`${t.label} Denied`]=a[t.key+"Denied"];});o["Total Unique"]=a.totalUnique;o["Year Approved"]=a.calApproved;o["Year Denied"]=a.calDenied;return o};
-  const eA=()=>dlXLSX(bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),T,null).map(shape),"Academic_Report.xlsx");
-  const eH=()=>dlXLSX(bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),T,cHN).map(shape),"Housing_Report.xlsx");
+  const eA=()=>dlXLSX(bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),TERMS,null).map(shape),"Academic_Report.xlsx");
+  const eH=()=>dlXLSX(bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),TERMS,cHN).map(shape),"Housing_Report.xlsx");
   return(<div className="fade-up"><h2 style={{fontSize:26,fontWeight:800,marginBottom:24}}>Export as Excel</h2><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,maxWidth:700}}>{[{l:"Academic",fn:eA,c:CO.accent},{l:"Housing",fn:eH,c:CO.purple}].map(e=><div key={e.l} style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:24}}><h3 style={{fontSize:16,fontWeight:700,marginBottom:16}}>{e.l}</h3><button className="btn btn-primary" onClick={e.fn} style={{width:"100%",background:e.c}}>↓ Download .xlsx</button></div>)}</div></div>)}
 
 /* ═══ CHART EDITOR PANEL ═══ */
@@ -842,8 +853,8 @@ function GenReportTab({rawData,testRoomData,testAccomData,apptData,caseNotesData
   // Per-term student counts (Fall / Winter / Spring / Summer)
   const termStu=TERMS.map(t=>({...t,n:new Set(rawData.filter(r=>normTerm(r["Semester (course)"])===t.label).map(r=>r["Student ID"]||r["Name"])).size}));
   const fs=termStu[0]?termStu[0].n:0, ss=termStu[2]?termStu[2].n:0;
-  const allAcad=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),T,null),[rawData,T]);
-  const allHous=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),T,cHN),[rawData,T]);
+  const allAcad=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),TERMS,null),[rawData,T]);
+  const allHous=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),TERMS,cHN),[rawData,T]);
   // Exams per term — includes Summer
   const examTerms=TERMS.map(t=>({...t,n:testRoomData.filter(r=>normTerm(r["Semester"])===t.label).length}));
   const ft=examTerms[0]?examTerms[0].n:0, st=examTerms[2]?examTerms[2].n:0;
@@ -1650,7 +1661,7 @@ function IncomingTab({incomingData,T,TERMS}){
       <div style={{overflow:"auto",maxHeight:"38vh"}}>
         <table><thead><tr>
           <th>Accommodation</th>
-          {TERMS.map(t=>[<th key={t.key+"a"} style={{textAlign:"right",color:t.col}}>{shortTerm(t.label)} Appr.</th>,<th key={t.key+"d"} style={{textAlign:"right",color:CO.dim}}>{shortTerm(t.label)} Den.</th>])}
+          {TERMS.map(t=>[<th key={t.key+"a"} style={{textAlign:"right",color:t.col}}>{shortTerm(t.label,TERMS)} Appr.</th>,<th key={t.key+"d"} style={{textAlign:"right",color:CO.dim}}>{shortTerm(t.label,TERMS)} Den.</th>])}
           <th style={{textAlign:"right",color}}>Total Appr.</th>
           <th style={{textAlign:"right"}}>Total Den.</th>
         </tr></thead>
@@ -1863,7 +1874,7 @@ function IncomingTab({incomingData,T,TERMS}){
 /* ═══ MAIN APP ═══ */
 function App(){
   /* ── localStorage persistence helpers ── */
-  const LS_KEYS={raw:"oars_raw",test:"oars_test",testAccom:"oars_testAccom",appt:"oars_appt",caseNotes:"oars_caseNotes",studentNotes:"oars_studentNotes",incoming:"oars_incoming",ay:"oars_ay"};
+  const LS_KEYS={raw:"oars_raw",test:"oars_test",testAccom:"oars_testAccom",appt:"oars_appt",caseNotes:"oars_caseNotes",studentNotes:"oars_studentNotes",incoming:"oars_incoming",ay:"oars_ay",preSummer:"oars_preSummer",enrolledOnly:"oars_enrolledOnly"};
   const lsLoad=(key)=>{try{const v=localStorage.getItem(key);return v?JSON.parse(v):null;}catch(e){return null;}};
   const lsSave=(key,val)=>{
     if(!val||!val.length){try{localStorage.removeItem(key);}catch(e){}return true;}
@@ -1886,6 +1897,45 @@ function App(){
   const[incomingData,setIncomingData]=useState(()=>lsLoad(LS_KEYS.incoming)||[]);
   const[execStats,setExecStats]=useState(null);
   const[ay,setAY]=useState(()=>lsLoad(LS_KEYS.ay)||"2024-2025");const[tab,setTab]=useState("import");
+  const[inclPreSummer,setInclPreSummer]=useState(()=>{const v=lsLoad(LS_KEYS.preSummer);return v===null?false:v});
+  const[enrolledOnly,setEnrolledOnly]=useState(()=>{const v=lsLoad(LS_KEYS.enrolledOnly);return v===null?true:v});
+
+  const ys=parseInt(ay.split("-")[0]),fS=`Fall ${ys}`,wS=`Winter ${ys}`,sS=`Spring ${ys+1}`,suS=`Summer ${ys+1}`,suPre=`Summer ${ys}`;
+  const T={fS,wS,sS,suS,suPre};
+
+  /* ── "Enrolled only" filter ───────────────────────────────────────────
+     The Academic & Housing export carries an Enrolled (Yes/No) column: one
+     row per student x accommodation x course. Rows marked No are course
+     registrations the student dropped. Default is ON, so counts reflect
+     actively enrolled coursework. ─────────────────────────────────────── */
+  const enrollAvailable=hasEnrolledCol(rawData)||hasEnrolledCol(testAccomData);
+  const notEnrolledCount=useMemo(()=>[...rawData,...testAccomData].filter(r=>hasEnrolledCol([r])&&!isEnrolled(r)).length,[rawData,testAccomData]);
+  const rawF=useMemo(()=>applyEnrolled(rawData,enrolledOnly),[rawData,enrolledOnly]);
+  const testAccomF=useMemo(()=>applyEnrolled(testAccomData,enrolledOnly),[testAccomData,enrolledOnly]);
+
+  /* ── Leading-summer detection ─────────────────────────────────────────
+     Summer {ys} (e.g. Summer 2025) sits BEFORE the fall term. Some exports
+     include it, some don't — so it is offered as a toggle only when rows
+     for it are actually present. ──────────────────────────────────────── */
+  const preSummerCount=useMemo(()=>{
+    let n=0;
+    [rawF,testAccomF].forEach(ds=>ds.forEach(r=>{if(normTerm(r["Semester (course)"])===suPre)n++}));
+    testRoomData.forEach(r=>{if(normTerm(r["Semester"])===suPre)n++});
+    apptData.forEach(r=>{if(semOf(r["AppointmentDate"])===suPre)n++});
+    [...caseNotesData,...studentNotesData].forEach(r=>{if(semOf(r["Created"]||r["Date Created (Student)"])===suPre)n++});
+    return n;
+  },[rawF,testAccomF,testRoomData,apptData,caseNotesData,studentNotesData,suPre]);
+  const preSummerAvailable=preSummerCount>0;
+  const showPreSummer=preSummerAvailable&&inclPreSummer;
+
+  // Canonical term set. Leading summer is prepended only when toggled on.
+  const TERMS=useMemo(()=>[
+    ...(showPreSummer?[{key:"summerPre",label:suPre,col:"#e0705a"}]:[]),
+    {key:"fall",label:fS,col:CO.orange},
+    {key:"winter",label:wS,col:"#5cc9f5"},
+    {key:"spring",label:sS,col:CO.green},
+    {key:"summer",label:suS,col:CO.yellow},
+  ],[showPreSummer,suPre,fS,wS,sS,suS]);
 
   /* Auto-save each dataset to localStorage when it changes */
   useEffect(()=>{lsSave(LS_KEYS.raw,rawData);},[rawData]);
@@ -1896,17 +1946,19 @@ function App(){
   useEffect(()=>{lsSave(LS_KEYS.studentNotes,studentNotesData);},[studentNotesData]);
   useEffect(()=>{lsSave(LS_KEYS.incoming,incomingData);},[incomingData]);
   useEffect(()=>{lsSave(LS_KEYS.ay,ay);},[ay]);
+  useEffect(()=>{try{localStorage.setItem(LS_KEYS.preSummer,JSON.stringify(inclPreSummer))}catch(e){}},[inclPreSummer]);
+  useEffect(()=>{try{localStorage.setItem(LS_KEYS.enrolledOnly,JSON.stringify(enrolledOnly))}catch(e){}},[enrolledOnly]);
 
   // Pre-compute exec stats after any data change — runs in background after render
   useEffect(()=>{
-    if(!rawData.length){setExecStats(null);return;}
+    if(!rawF.length){setExecStats(null);return;}
     const tid=setTimeout(()=>{
       const sid=r=>r["Student ID"]||r["Name"]||"?";
       const isAppr=r=>(r["Approved"]||"").toLowerCase()==="approved";
       const isDen=r=>(r["Approved"]||"").toLowerCase()==="denied";
       const approvedSids=new Set();const allSids=new Set();
       const acadMap={};const housMap={};
-      rawData.forEach(r=>{
+      rawF.forEach(r=>{
         const s=sid(r);const a=r["Requested Accommodation"]||"";const appr=isAppr(r);const den=isDen(r);
         allSids.add(s);if(appr)approvedSids.add(s);
         if(isA(a)){
@@ -1923,13 +1975,13 @@ function App(){
       const housArr=Object.entries(housMap).map(([name,v])=>({name,approved:v.ap.size,denied:v.dn.size,total:v.ap.size+v.dn.size})).sort((a,b)=>b.total-a.total);
       // Testing — bucket every booking by canonical term
       let testBooked=0,testDelivered=0,testCancelled=0;
-      const yr0=parseInt(ay.split("-")[0]);
-      const termList=[`Fall ${yr0}`,`Winter ${yr0}`,`Spring ${yr0+1}`,`Summer ${yr0+1}`];
+      const termList=TERMS.map(t=>t.label);
       const testsByTerm={};termList.forEach(t=>testsByTerm[t]=0);
       testRoomData.forEach(r=>{testBooked++;const c=(r["Appointment Cancelled"]||"").toLowerCase()==="yes";if(!c)testDelivered++;else testCancelled++;
         const t=normTerm(r["Semester"]);if(testsByTerm[t]!==undefined)testsByTerm[t]++;});
-      const fallTests=testsByTerm[termList[0]],springTests=testsByTerm[termList[2]],summerTests=testsByTerm[termList[3]],winterTests=testsByTerm[termList[1]];
-      const testAccomApproved=testAccomData.length?new Set(testAccomData.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").map(r=>r["Student ID"]||r["Name"])).size:null;
+      const gT=l=>testsByTerm[l]||0;
+      const fallTests=gT(`Fall ${ys}`),winterTests=gT(`Winter ${ys}`),springTests=gT(`Spring ${ys+1}`),summerTests=gT(`Summer ${ys+1}`);
+      const testAccomApproved=testAccomF.length?new Set(testAccomF.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").map(r=>r["Student ID"]||r["Name"])).size:null;
       // Appts — total plus a per-term split derived from AppointmentDate
       let apptCount=0,apptMins=0;
       const apptByTerm={};termList.forEach(t=>apptByTerm[t]={n:0,mins:0});
@@ -1956,14 +2008,8 @@ function App(){
       });
     },100);
     return()=>clearTimeout(tid);
-  },[rawData,testRoomData,testAccomData,apptData,caseNotesData,studentNotesData,incomingData,ay]);
+  },[rawF,testRoomData,testAccomF,apptData,caseNotesData,studentNotesData,incomingData,ay,TERMS]);
   const[iSt,setISt]=useState({raw:null,test:null,testaccom:null,appt:null,casenotes:null,studentnotes:null,incoming:null});const[ld,setLd]=useState(false);
-  const ys=parseInt(ay.split("-")[0]),fS=`Fall ${ys}`,wS=`Winter ${ys}`,sS=`Spring ${ys+1}`,suS=`Summer ${ys+1}`;
-  // Canonical term set for this academic year. Matches the labels Accommodate
-  // exports (Fall 2025 / Winter 2025 / Spring 2026 / Summer 2026) and the terms
-  // derived from raw dates in the appointment / notes files.
-  const T={fS,wS,sS,suS};
-  const TERMS=[{key:"fall",label:fS,col:CO.orange},{key:"winter",label:wS,col:"#5cc9f5"},{key:"spring",label:sS,col:CO.green},{key:"summer",label:suS,col:CO.yellow}];
   const tabs=[
     {id:"import",label:"Import Data",icon:"↑"},
     {id:"summary",label:"Executive Summary",icon:"◈"},
@@ -1987,7 +2033,17 @@ function App(){
         <label style={{fontSize:12.5,color:CO.muted}}>Academic Year:</label>
         <select value={ay} onChange={e=>setAY(e.target.value)} style={{background:CO.bg,color:CO.text,border:`1.5px solid ${CO.border}`,borderRadius:8,padding:"7px 14px",fontSize:14,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>
           {["2019-2020","2020-2021","2021-2022","2022-2023","2023-2024","2024-2025","2025-2026","2026-2027","2027-2028","2028-2029","2029-2030","2030-2031","2031-2032","2032-2033"].map(y=><option key={y} value={y}>{y}</option>)}</select>
-        <div style={{padding:"5px 14px",borderRadius:24,background:rawData.length?`${CO.green}18`:`${CO.red}18`,color:rawData.length?CO.green:CO.red,fontSize:12,fontWeight:600}}>{rawData.length?`${rawData.length.toLocaleString()} records`:"No data"}</div>
+        {preSummerAvailable&&<label title={`${preSummerCount.toLocaleString()} records fall in ${suPre}, the summer term before ${fS}.`} style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",padding:"5px 12px",borderRadius:24,background:showPreSummer?"#e0705a20":"transparent",border:`1.5px solid ${showPreSummer?"#e0705a":CO.border}`}}>
+          <input type="checkbox" checked={inclPreSummer} onChange={e=>setInclPreSummer(e.target.checked)} style={{accentColor:"#e0705a",cursor:"pointer",width:14,height:14}}/>
+          <span style={{fontSize:12,fontWeight:600,color:showPreSummer?"#e0705a":CO.muted,whiteSpace:"nowrap"}}>Include {suPre}</span>
+          <span style={{fontSize:10.5,color:CO.dim,fontFamily:"'JetBrains Mono',monospace"}}>{preSummerCount.toLocaleString()}</span>
+        </label>}
+        {enrollAvailable&&<label title="The Academic & Housing export has one row per student x accommodation x course. Rows marked Enrolled=No are dropped course registrations." style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",padding:"5px 12px",borderRadius:24,background:enrolledOnly?`${CO.green}18`:"transparent",border:`1.5px solid ${enrolledOnly?CO.green:CO.border}`}}>
+          <input type="checkbox" checked={enrolledOnly} onChange={e=>setEnrolledOnly(e.target.checked)} style={{accentColor:CO.green,cursor:"pointer",width:14,height:14}}/>
+          <span style={{fontSize:12,fontWeight:600,color:enrolledOnly?CO.green:CO.muted,whiteSpace:"nowrap"}}>Enrolled only</span>
+          {notEnrolledCount>0&&<span style={{fontSize:10.5,color:CO.dim,fontFamily:"'JetBrains Mono',monospace"}}>&minus;{notEnrolledCount.toLocaleString()}</span>}
+        </label>}
+        <div style={{padding:"5px 14px",borderRadius:24,background:rawF.length?`${CO.green}18`:`${CO.red}18`,color:rawF.length?CO.green:CO.red,fontSize:12,fontWeight:600}}>{rawF.length?`${rawF.length.toLocaleString()} records`:"No data"}</div>
       </div></header>
     <div style={{display:"flex",height:"calc(100vh - 71px)"}}>
       <nav style={{width:220,background:CO.card,borderRight:`1px solid ${CO.border}`,padding:"20px 0",flexShrink:0,overflowY:"auto"}}>
@@ -1999,15 +2055,15 @@ function App(){
       <main style={{flex:1,padding:28,overflow:"auto"}}>
         {tab==="import"&&<ImportTab rawData={rawData} setRawData={setRawData} testRoomData={testRoomData} setTestRoomData={setTestRoomData} testAccomData={testAccomData} setTestAccomData={setTestAccomData} apptData={apptData} setApptData={setApptData} caseNotesData={caseNotesData} setCaseNotesData={setCaseNotesData} studentNotesData={studentNotesData} setStudentNotesData={setStudentNotesData} incomingData={incomingData} setIncomingData={setIncomingData} iSt={iSt} setISt={setISt} ld={ld} setLd={setLd} onClearAll={()=>{if(!window.confirm("Clear all cached data? You will need to re-import your files."))return;[setRawData,setTestRoomData,setTestAccomData,setApptData,setCaseNotesData,setStudentNotesData,setIncomingData].forEach(fn=>fn([]));try{Object.values({raw:"oars_raw",test:"oars_test",testAccom:"oars_testAccom",appt:"oars_appt",caseNotes:"oars_caseNotes",studentNotes:"oars_studentNotes",incoming:"oars_incoming"}).forEach(k=>localStorage.removeItem(k));}catch(e){}setISt({});}}/>}
         {tab==="summary"&&<ExecTab execStats={execStats} TERMS={TERMS} fS={fS} sS={sS} hasTest={testRoomData.length>0} hasAppt={apptData.length>0} hasNotes={caseNotesData.length>0||studentNotesData.length>0} hasIncoming={incomingData.length>0}/>}
-        {tab==="academic"&&<AcadTab rawData={rawData} T={T} TERMS={TERMS}/>}
-        {tab==="housing"&&<HousingTab rawData={rawData} T={T} TERMS={TERMS}/>}
-        {tab==="testroom"&&<TestTab testRoomData={testRoomData} testAccomData={testAccomData} T={T} TERMS={TERMS}/>}
+        {tab==="academic"&&<AcadTab rawData={rawF} T={T} TERMS={TERMS}/>}
+        {tab==="housing"&&<HousingTab rawData={rawF} T={T} TERMS={TERMS}/>}
+        {tab==="testroom"&&<TestTab testRoomData={testRoomData} testAccomData={testAccomF} T={T} TERMS={TERMS}/>}
         {tab==="appointments"&&<DirectServicesTab apptData={apptData} T={T} TERMS={TERMS}/>}
         {tab==="indirect"&&<IndirectContactsTab caseNotesData={caseNotesData} studentNotesData={studentNotesData} T={T} TERMS={TERMS}/>}
         {tab==="incoming"&&<IncomingTab incomingData={incomingData} T={T} TERMS={TERMS}/>}
-        {tab==="students"&&<StudTab rawData={rawData} testRoomData={testRoomData} testAccomData={testAccomData} apptData={apptData} incomingData={incomingData} T={T} TERMS={TERMS}/>}
-        {tab==="export"&&<ExpTab rawData={rawData} T={T} TERMS={TERMS}/>}
-        {tab==="generate"&&<GenReportTab rawData={rawData} testRoomData={testRoomData} testAccomData={testAccomData} apptData={apptData} caseNotesData={caseNotesData} studentNotesData={studentNotesData} incomingData={incomingData} T={T} TERMS={TERMS} fS={fS} sS={sS} suS={suS} academicYear={ay}/>}
+        {tab==="students"&&<StudTab rawData={rawF} testRoomData={testRoomData} testAccomData={testAccomF} apptData={apptData} incomingData={incomingData} T={T} TERMS={TERMS}/>}
+        {tab==="export"&&<ExpTab rawData={rawF} T={T} TERMS={TERMS}/>}
+        {tab==="generate"&&<GenReportTab rawData={rawF} testRoomData={testRoomData} testAccomData={testAccomF} apptData={apptData} caseNotesData={caseNotesData} studentNotesData={studentNotesData} incomingData={incomingData} T={T} TERMS={TERMS} fS={fS} sS={sS} suS={suS} academicYear={ay}/>}
       </main></div></div>);
 }
 
