@@ -49,6 +49,37 @@ function parseCSV(t){const l=t.split(/\r?\n/).filter(l=>l.trim());if(!l.length)r
 function ssplit(l){const r=[];let c="",q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(ch==='"')q=!q;else if(ch===","&&!q){r.push(c);c=""}else c+=ch}r.push(c);return r}
 async function parseExcel(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array",cellDates:true,dateNF:"yyyy-mm-dd"});res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:false}))}catch(err){rej(err)}};r.onerror=rej;r.readAsArrayBuffer(f)})}
 async function parseFile(f){if(f.name.endsWith(".csv"))return parseCSV(await f.text());return parseExcel(f)}
+/* ═══════════════════════════════════════════════════════════════════
+   PERSISTENCE — localStorage caps at about 5 MB, which the Academic &
+   Housing (326k rows) and Case Notes (31k rows) exports blow straight
+   past, so they silently vanished on reload. IndexedDB has a far larger
+   quota and stores structured objects directly (no JSON round-trip).
+   Falls back to localStorage where IndexedDB is unavailable.
+   ═══════════════════════════════════════════════════════════════════ */
+const IDB_NAME="oars_db",IDB_STORE="datasets";
+function idbOpen(){return new Promise((res,rej)=>{
+  let r;try{r=indexedDB.open(IDB_NAME,1)}catch(e){return rej(e)}
+  r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains(IDB_STORE))db.createObjectStore(IDB_STORE)};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error||new Error("indexedDB open failed"));
+  r.onblocked=()=>rej(new Error("indexedDB blocked"));
+  setTimeout(()=>rej(new Error("indexedDB timeout")),6000);
+})}
+function idbSet(k,v){return idbOpen().then(db=>new Promise((res,rej)=>{
+  const tx=db.transaction(IDB_STORE,"readwrite");tx.objectStore(IDB_STORE).put(v,k);
+  tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error||new Error("aborted"));
+}))}
+function idbGet(k){return idbOpen().then(db=>new Promise((res,rej)=>{
+  const tx=db.transaction(IDB_STORE,"readonly");const q=tx.objectStore(IDB_STORE).get(k);
+  q.onsuccess=()=>res(q.result==null?null:q.result);q.onerror=()=>rej(q.error);
+}))}
+function idbDel(k){return idbOpen().then(db=>new Promise((res,rej)=>{
+  const tx=db.transaction(IDB_STORE,"readwrite");tx.objectStore(IDB_STORE).delete(k);
+  tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);
+}))}
+function idbAvailable(){
+  return idbOpen().then(db=>{try{db.close()}catch(e){}return true}).catch(()=>false);
+}
+
 function dlXLSX(rows,fn){if(!rows.length)return;const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Report");XLSX.writeFile(wb,fn)}
 
 const CO={bg:"#0a0e1a",card:"#111630",border:"#1e2542",accent:"#3878ff",accentSoft:"#3878ff18",green:"#22c58d",red:"#ef5757",yellow:"#f0b429",orange:"#f08c3a",purple:"#8b6cff",text:"#e2e6f0",muted:"#7a84a6",dim:"#4a5272"};
@@ -283,7 +314,7 @@ function SummaryPanel({panel,onClose,TERMS=[]}){
 }
 
 /* ═══ IMPORT TAB ═══ */
-function ImportTab({rawData,setRawData,testRoomData,setTestRoomData,testAccomData,setTestAccomData,apptData,setApptData,caseNotesData,setCaseNotesData,studentNotesData,setStudentNotesData,incomingData,setIncomingData,iSt,setISt,ld,setLd,onClearAll}){
+function ImportTab({cacheMode,rawData,setRawData,testRoomData,setTestRoomData,testAccomData,setTestAccomData,apptData,setApptData,caseNotesData,setCaseNotesData,studentNotesData,setStudentNotesData,incomingData,setIncomingData,iSt,setISt,ld,setLd,onClearAll}){
   const rR=useRef(),tR=useRef(),taR=useRef(),aR=useRef(),cnR=useRef(),snR=useRef(),inR=useRef();
   const handle=async(e,type)=>{const file=e.target.files[0];if(!file)return;setLd(true);try{
     // Special handling for incoming — duplicate "Approved" headers collapse in XLSX.js
@@ -334,12 +365,13 @@ function ImportTab({rawData,setRawData,testRoomData,setTestRoomData,testAccomDat
     {t:"incoming",ref:inR,col:"#e6b94a",icon:"🎓",title:"New Student Registrations",cols:"Name, Student ID, Requested Accommodation, Class Level, Approved (date), Approved (status)"},
   ];
   return(<div className="fade-up">
+    {cacheMode==="loading"&&<div style={{marginBottom:12,padding:"10px 16px",borderRadius:10,background:`${CO.accent}0e`,border:`1px solid ${CO.accent}30`,fontSize:12,color:CO.muted}}>Restoring previously imported data&hellip;</div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><h2 style={{fontSize:26,fontWeight:800}}>Import Your Data</h2><button onClick={onClearAll} style={{fontSize:12,padding:"6px 14px",borderRadius:8,background:"#2a1520",border:"1px solid #ef575760",color:CO.red,cursor:"pointer",fontWeight:600}}>🗑 Clear All Saved Data</button></div>
     <p style={{color:CO.muted,marginBottom:28}}>Upload .xlsx, .xlsm, .xls, or .csv files. Load all files for full reporting.</p>
     {(rawData.length||testRoomData.length||testAccomData.length||apptData.length||caseNotesData.length||studentNotesData.length||incomingData.length)?<div style={{marginBottom:16,padding:"14px 18px",borderRadius:12,background:"#0d1f0d",border:"1.5px solid #22c58d50",display:"flex",alignItems:"flex-start",gap:12}}>
       <span style={{fontSize:22,marginTop:1}}>💾</span>
       <div style={{flex:1}}>
-        <p style={{fontSize:13,fontWeight:700,color:CO.green,marginBottom:6}}>Previous session data restored from cache</p>
+        <p style={{fontSize:13,fontWeight:700,color:CO.green,marginBottom:6}}>Previous session data restored{cacheMode==="idb"?" from IndexedDB":cacheMode==="local"?" from localStorage":""}</p>
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
           {[
             {label:"Academic/Housing",val:rawData.length,key:"raw"},
@@ -354,7 +386,9 @@ function ImportTab({rawData,setRawData,testRoomData,setTestRoomData,testAccomDat
             :<span key={key} style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"#ef575715",border:"1px solid #ef575730",color:"#ef7a7a"}}>⚠ {label}: needs re-import</span>
           )}
         </div>
-        <p style={{fontSize:10.5,color:CO.dim,marginTop:6}}>Large files (Academic/Housing, Testing Accom., Case Notes) may exceed browser cache limits — re-import those if shown above.</p>
+        <p style={{fontSize:10.5,color:CO.dim,marginTop:6}}>{cacheMode==="idb"
+          ?"Stored in this browser's IndexedDB — large files (Academic/Housing, Case Notes) persist between sessions."
+          :"This browser fell back to localStorage (about 5 MB), so large files may not survive a reload — re-import any marked above."}</p>
       </div>
     </div>:null}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,maxWidth:1100}}>
@@ -1920,13 +1954,15 @@ function App(){
   };
   const lsSizeOk=(val)=>{try{const s=JSON.stringify(val);return s.length<3000000;}catch(e){return false;}};
 
-  const[rawData,setRawData]=useState(()=>lsLoad(LS_KEYS.raw)||[]);
-  const[testRoomData,setTestRoomData]=useState(()=>lsLoad(LS_KEYS.test)||[]);
-  const[testAccomData,setTestAccomData]=useState(()=>lsLoad(LS_KEYS.testAccom)||[]);
-  const[apptData,setApptData]=useState(()=>lsLoad(LS_KEYS.appt)||[]);
-  const[caseNotesData,setCaseNotesData]=useState(()=>lsLoad(LS_KEYS.caseNotes)||[]);
-  const[studentNotesData,setStudentNotesData]=useState(()=>lsLoad(LS_KEYS.studentNotes)||[]);
-  const[incomingData,setIncomingData]=useState(()=>lsLoad(LS_KEYS.incoming)||[]);
+  const[rawData,setRawData]=useState([]);
+  const[testRoomData,setTestRoomData]=useState([]);
+  const[testAccomData,setTestAccomData]=useState([]);
+  const[apptData,setApptData]=useState([]);
+  const[caseNotesData,setCaseNotesData]=useState([]);
+  const[studentNotesData,setStudentNotesData]=useState([]);
+  const[incomingData,setIncomingData]=useState([]);
+  const[cacheMode,setCacheMode]=useState("loading"); // loading | idb | local
+  const hydrated=useRef(false);
   const[execStats,setExecStats]=useState(null);
   const[ay,setAY]=useState(()=>lsLoad(LS_KEYS.ay)||"2024-2025");const[tab,setTab]=useState("import");
   const[inclPreSummer,setInclPreSummer]=useState(()=>{const v=lsLoad(LS_KEYS.preSummer);return v===null?false:v});
@@ -1983,14 +2019,42 @@ function App(){
   const rawF=acadS.rows, testAccomF=taS.rows;
   const totalExcluded=acadS.outOfScope+taS.outOfScope+bookS.outOfScope+apptS.outOfScope+cnS.outOfScope+snS.outOfScope;
 
-  /* Auto-save each dataset to localStorage when it changes */
-  useEffect(()=>{lsSave(LS_KEYS.raw,rawData);},[rawData]);
-  useEffect(()=>{lsSave(LS_KEYS.test,testRoomData);},[testRoomData]);
-  useEffect(()=>{lsSave(LS_KEYS.testAccom,testAccomData);},[testAccomData]);
-  useEffect(()=>{lsSave(LS_KEYS.appt,apptData);},[apptData]);
-  useEffect(()=>{lsSave(LS_KEYS.caseNotes,caseNotesData);},[caseNotesData]);
-  useEffect(()=>{lsSave(LS_KEYS.studentNotes,studentNotesData);},[studentNotesData]);
-  useEffect(()=>{lsSave(LS_KEYS.incoming,incomingData);},[incomingData]);
+  /* Hydrate every dataset once, from IndexedDB when available.
+     Anything still sitting in localStorage from an older version is
+     migrated across on first run. */
+  const SETTERS={raw:setRawData,test:setTestRoomData,testAccom:setTestAccomData,appt:setApptData,caseNotes:setCaseNotesData,studentNotes:setStudentNotesData,incoming:setIncomingData};
+  useEffect(()=>{
+    let dead=false;
+    (async()=>{
+      const useIdb=await idbAvailable();
+      for(const k of Object.keys(SETTERS)){
+        let v=null;
+        if(useIdb){try{v=await idbGet(k)}catch(e){v=null}}
+        if(!v||!v.length){
+          const legacy=lsLoad(LS_KEYS[k]);
+          if(legacy&&legacy.length){v=legacy;if(useIdb)idbSet(k,legacy).catch(()=>{});}
+        }
+        if(v&&v.length&&!dead)SETTERS[k](v);
+      }
+      if(!dead){setCacheMode(useIdb?"idb":"local");hydrated.current=true;}
+    })();
+    return()=>{dead=true};
+  },[]);
+
+  /* Persist on change — skipped until hydration finishes so the initial
+     empty state never wipes the cache. */
+  const persist=(k,val)=>{
+    if(!hydrated.current)return;
+    if(cacheMode==="idb"){(val&&val.length?idbSet(k,val):idbDel(k)).catch(e=>console.warn("IndexedDB save failed for",k,e));}
+    else lsSave(LS_KEYS[k],val);
+  };
+  useEffect(()=>{persist("raw",rawData)},[rawData]);
+  useEffect(()=>{persist("test",testRoomData)},[testRoomData]);
+  useEffect(()=>{persist("testAccom",testAccomData)},[testAccomData]);
+  useEffect(()=>{persist("appt",apptData)},[apptData]);
+  useEffect(()=>{persist("caseNotes",caseNotesData)},[caseNotesData]);
+  useEffect(()=>{persist("studentNotes",studentNotesData)},[studentNotesData]);
+  useEffect(()=>{persist("incoming",incomingData)},[incomingData]);
   useEffect(()=>{lsSave(LS_KEYS.ay,ay);},[ay]);
   useEffect(()=>{try{localStorage.setItem(LS_KEYS.preSummer,JSON.stringify(inclPreSummer))}catch(e){}},[inclPreSummer]);
   useEffect(()=>{try{localStorage.setItem(LS_KEYS.enrolledOnly,JSON.stringify(enrolledOnly))}catch(e){}},[enrolledOnly]);
@@ -2102,7 +2166,7 @@ function App(){
         {totalExcluded>0&&tab!=="import"&&<div style={{marginBottom:16,padding:"10px 16px",borderRadius:10,background:`${CO.yellow}0e`,border:`1px solid ${CO.yellow}35`,fontSize:12,color:CO.muted}}>
           <strong style={{color:CO.yellow}}>{totalExcluded.toLocaleString()} records</strong> fall outside {ay} and are excluded from every figure below.{preSummerAvailable&&!inclPreSummer?` ${preSummerCount.toLocaleString()} of them are ${suPre} — use the toggle above to include that term.`:""}
         </div>}
-        {tab==="import"&&<ImportTab rawData={rawData} setRawData={setRawData} testRoomData={testRoomData} setTestRoomData={setTestRoomData} testAccomData={testAccomData} setTestAccomData={setTestAccomData} apptData={apptData} setApptData={setApptData} caseNotesData={caseNotesData} setCaseNotesData={setCaseNotesData} studentNotesData={studentNotesData} setStudentNotesData={setStudentNotesData} incomingData={incomingData} setIncomingData={setIncomingData} iSt={iSt} setISt={setISt} ld={ld} setLd={setLd} onClearAll={()=>{if(!window.confirm("Clear all cached data? You will need to re-import your files."))return;[setRawData,setTestRoomData,setTestAccomData,setApptData,setCaseNotesData,setStudentNotesData,setIncomingData].forEach(fn=>fn([]));try{Object.values({raw:"oars_raw",test:"oars_test",testAccom:"oars_testAccom",appt:"oars_appt",caseNotes:"oars_caseNotes",studentNotes:"oars_studentNotes",incoming:"oars_incoming"}).forEach(k=>localStorage.removeItem(k));}catch(e){}setISt({});}}/>}
+        {tab==="import"&&<ImportTab cacheMode={cacheMode} rawData={rawData} setRawData={setRawData} testRoomData={testRoomData} setTestRoomData={setTestRoomData} testAccomData={testAccomData} setTestAccomData={setTestAccomData} apptData={apptData} setApptData={setApptData} caseNotesData={caseNotesData} setCaseNotesData={setCaseNotesData} studentNotesData={studentNotesData} setStudentNotesData={setStudentNotesData} incomingData={incomingData} setIncomingData={setIncomingData} iSt={iSt} setISt={setISt} ld={ld} setLd={setLd} onClearAll={()=>{if(!window.confirm("Clear all cached data? You will need to re-import your files."))return;[setRawData,setTestRoomData,setTestAccomData,setApptData,setCaseNotesData,setStudentNotesData,setIncomingData].forEach(fn=>fn([]));Object.keys(SETTERS).forEach(k=>{idbDel(k).catch(()=>{});try{localStorage.removeItem(LS_KEYS[k])}catch(e){}});setISt({});}}/>}
         {tab==="summary"&&<ExecTab execStats={execStats} TERMS={TERMS} fS={fS} sS={sS} hasTest={bookS.rows.length>0} hasAppt={apptS.rows.length>0} hasNotes={cnS.rows.length>0||snS.rows.length>0} hasIncoming={incomingData.length>0}/>}
         {tab==="academic"&&<AcadTab rawData={rawF} census={acadS.census} T={T} TERMS={TERMS}/>}
         {tab==="housing"&&<HousingTab rawData={rawF} census={acadS.census} T={T} TERMS={TERMS}/>}
