@@ -93,7 +93,7 @@ const PALETTES={
   Earth:["#92400e","#166534","#854d0e","#1e3a5f","#7c2d12","#365314","#78350f","#1e40af","#9a3412","#15803d","#a16207","#1d4ed8"],
 };
 
-function normCL(cl){if(!cl)return"";const l=cl.trim().toLowerCase();if(l.includes("fresh"))return"Freshman";if(l.includes("soph"))return"Sophomore";if(l.includes("jun"))return"Junior";if(l.includes("sen"))return"Senior";if(l.includes("grad")&&!l.includes("incoming"))return"Graduate";if(l.includes("doct"))return"Doctoral";if(l.includes("alum"))return"Alumni";if(l.includes("exchange"))return"Exchange Program";if(l.includes("incoming"))return"Incominggr";return cl.trim()}
+function normCL(cl){if(!cl)return"";const l=cl.trim().toLowerCase();if(l.includes("fresh"))return"Freshman";if(l.includes("soph"))return"Sophomore";if(l.includes("jun"))return"Junior";if(l.includes("sen"))return"Senior";if(l.includes("grad")&&!l.includes("incoming"))return"Graduate";if(l.includes("doct"))return"Doctoral";if(l.includes("alum"))return"Alumni";if(l.includes("exchange"))return"Exchange Program";if(l.includes("incoming"))return"Incoming Graduate";return cl.trim()}
 function isH(a){if(!a)return false;const l=a.toLowerCase();return l.includes("housing accommodation")||l.includes("emotional support animal")||l.includes("service animal")||l.includes("accessible transportation")}
 function isA(a){return a&&!isH(a)}
 function cHN(n){return n?(n.replace(/Housing Accommodation\/?/gi,"").replace(/^\//,"").trim()||n):""}
@@ -158,6 +158,29 @@ function bSum(data,TERMS,cFn){
     TERMS.forEach(t=>{o[t.key+"Approved"]=a.t[t.key].A.size;o[t.key+"Denied"]=a.t[t.key].D.size});
     return o;
   }).sort((a,b)=>b.totalUnique-a.totalUnique);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CLASS-LEVEL FILTER — Class Level is a single snapshot value per
+   student, so filtering on it filters whole students. Default keeps the
+   five degree-seeking undergraduate/graduate levels.
+   ═══════════════════════════════════════════════════════════════════ */
+const CL_DEFAULT=["Freshman","Sophomore","Junior","Senior","Graduate"];
+const CL_ORDER=["Freshman","Sophomore","Junior","Senior","Graduate","Incoming Graduate","Doctoral","Exchange Program","Alumni"];
+const CL_BLANK="(not specified)";
+function clOf(r){const v=normCL(r["Class Level"]);return v||CL_BLANK}
+function hasClassCol(rows){return rows.length>0&&Object.keys(rows[0]).some(k=>k.trim().toLowerCase()==="class level")}
+function classCensus(rows){
+  const c={};rows.forEach(r=>{const k=clOf(r);c[k]=(c[k]||0)+1});return c;
+}
+function classStudentCensus(rows){
+  const m={};rows.forEach(r=>{const k=clOf(r);(m[k]=m[k]||new Set()).add(r["Student ID"]||r["Name"])});
+  const o={};Object.entries(m).forEach(([k,v])=>o[k]=v.size);return o;
+}
+function applyClass(rows,enabled){
+  if(!enabled||!enabled.length||!hasClassCol(rows))return rows;
+  const set=new Set(enabled);
+  return rows.filter(r=>set.has(clOf(r)));
 }
 
 /* Enrolled flag — files that carry an "Enrolled" column mark each course row Yes/No. */
@@ -313,6 +336,49 @@ function SummaryPanel({panel,onClose,TERMS=[]}){
   </>);
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   IMPORT VALIDATION — each slot expects a specific Accommodate report.
+   Without this a Student Notes export dropped into the Case Notes slot
+   imports "successfully" and then shows nothing, because the date column
+   it needs is not there. Check the headers up front and say so plainly.
+   ═══════════════════════════════════════════════════════════════════ */
+const SLOT_SPEC={
+  raw:{label:"Academic & Housing Accommodations",need:["Requested Accommodation","Semester (course)"],any:["Name","Student ID"]},
+  testaccom:{label:"Testing Accommodations",need:["Requested Accommodation","Semester (course)"],any:["Name","Student ID"]},
+  test:{label:"Test Room Bookings",need:["Student"],any:["Semester","Exam","Course (Object)"]},
+  appt:{label:"Direct Service Appointments",need:["AppointmentDate"],any:["Symplicity Student ID","Student ID","Staff"]},
+  casenotes:{label:"Case Notes",need:["Created"],any:["Name of Specialist","Category (Case)","Duration (Case)"]},
+  studentnotes:{label:"Student Notes",need:["Date Created (Student)"],any:["Category (Student)","Duration (Student)","Created By (Student)"]},
+};
+// Slots whose column shape is identical — never suggest one for the other.
+const SLOT_TWINS={raw:"testaccom",testaccom:"raw"};
+function slotsMatching(headers){
+  const h=new Set(headers.map(x=>String(x||"").trim()));
+  return Object.entries(SLOT_SPEC).filter(([,sp])=>
+    sp.need.every(c=>h.has(c))&&(!sp.any.length||sp.any.some(c=>h.has(c)))
+  ).map(([k])=>k);
+}
+function validateSlot(type,headers){
+  const sp=SLOT_SPEC[type];
+  if(!sp)return{ok:true};
+  const h=new Set(headers.map(x=>String(x||"").trim()));
+  const missing=sp.need.filter(c=>!h.has(c));
+  const anyOk=!sp.any.length||sp.any.some(c=>h.has(c));
+  if(!missing.length&&anyOk)return{ok:true};
+  const matches=slotsMatching(headers).filter(k=>k!==type&&SLOT_TWINS[type]!==k);
+  let msg=`This is not the ${sp.label} report — missing ${missing.length?missing.map(c=>`"${c}"`).join(", "):`any of ${sp.any.map(c=>`"${c}"`).join(", ")}`}.`;
+  if(matches.length)msg+=` It looks like the ${SLOT_SPEC[matches[0]].label} export — import it in that slot instead.`;
+  else msg+=` Found: ${[...h].slice(0,6).join(", ")}`;
+  return{ok:false,msg};
+}
+// Cheap fingerprint so the same export loaded into two slots can be flagged.
+function dsFingerprint(rows){
+  if(!rows||!rows.length)return null;
+  const k=Object.keys(rows[0]).join("|");
+  const first=Object.values(rows[0]).join("|").slice(0,120);
+  return`${rows.length}::${k}::${first}`;
+}
+
 /* ═══ IMPORT TAB ═══ */
 function ImportTab({cacheMode,rawData,setRawData,testRoomData,setTestRoomData,testAccomData,setTestAccomData,apptData,setApptData,caseNotesData,setCaseNotesData,studentNotesData,setStudentNotesData,incomingData,setIncomingData,iSt,setISt,ld,setLd,onClearAll}){
   const rR=useRef(),tR=useRef(),taR=useRef(),aR=useRef(),cnR=useRef(),snR=useRef(),inR=useRef();
@@ -339,6 +405,9 @@ function ImportTab({cacheMode,rawData,setRawData,testRoomData,setTestRoomData,te
       setLd(false);return;
     }
     const data=await parseFile(file);
+    if(!data.length){setISt(s=>({...s,[type]:{ok:false,err:"The first sheet in this workbook is empty."}}));setLd(false);return;}
+    const chk=validateSlot(type,Object.keys(data[0]));
+    if(!chk.ok){setISt(s=>({...s,[type]:{ok:false,err:chk.msg}}));setLd(false);return;}
     const norm=data.map(row=>{const r={};Object.keys(row).forEach(k=>{r[k.trim()]=typeof row[k]==="string"?row[k].trim():String(row[k]??'').trim()});return r});
     const filtered=norm.filter(r=>{
       if(type==="test")return r["Student"];
@@ -355,6 +424,19 @@ function ImportTab({cacheMode,rawData,setRawData,testRoomData,setTestRoomData,te
     else if(type==="casenotes")setCaseNotesData(finalData);
     else if(type==="studentnotes")setStudentNotesData(finalData);
     setISt(s=>({...s,[type]:{ok:true,ct:finalData.length,fn:file.name}}));}catch(err){setISt(s=>({...s,[type]:{ok:false,err:err.message}}))}setLd(false)};
+  // Flag any two slots holding byte-identical datasets.
+  const dupWarn=useMemo(()=>{
+    const sets=[["Academic & Housing",rawData],["Testing Accommodations",testAccomData],["Test Room Bookings",testRoomData],
+                ["Direct Service Appointments",apptData],["Case Notes",caseNotesData],["Student Notes",studentNotesData],["New Student Registrations",incomingData]];
+    const seen={};
+    for(const[name,rows]of sets){
+      const fp=dsFingerprint(rows);if(!fp)continue;
+      if(seen[fp])return`${seen[fp]} and ${name}`;
+      seen[fp]=name;
+    }
+    return null;
+  },[rawData,testAccomData,testRoomData,apptData,caseNotesData,studentNotesData,incomingData]);
+
   const slots=[
     {t:"raw",ref:rR,col:CO.accent,icon:"◎",title:"Academic & Housing Accommodations",cols:"Name, Student ID, Class Level, Requested Accommodation, Approved, Semester (course)"},
     {t:"testaccom",ref:taR,col:CO.orange,icon:"✎",title:"Testing Accommodations",cols:"Name, Student ID, Class Level, Requested Accommodation, Approved, Semester (course)"},
@@ -401,9 +483,13 @@ function ImportTab({cacheMode,rawData,setRawData,testRoomData,setTestRoomData,te
         <input ref={c.ref} type="file" accept=".csv,.xlsx,.xlsm,.xls" onChange={e=>handle(e,c.t)}/>
         <button className="btn btn-primary" onClick={()=>c.ref.current.click()} style={{width:"100%",background:c.col,fontSize:12,padding:"8px 14px"}}>{ld?"Processing…":"Choose File & Import"}</button>
         {iSt[c.t]&&<div style={{marginTop:10,padding:8,borderRadius:8,background:iSt[c.t].ok?`${CO.green}12`:`${CO.red}12`,fontSize:11}}>
-          {iSt[c.t].ok?<span style={{color:CO.green}}>✓ {iSt[c.t].ct.toLocaleString()} records — {iSt[c.t].fn}</span>:<span style={{color:CO.red}}>✗ {iSt[c.t].err}</span>}</div>}
+          {iSt[c.t].ok?<span style={{color:CO.green}}>✓ {iSt[c.t].ct.toLocaleString()} records — {iSt[c.t].fn}</span>:<span style={{color:CO.red,lineHeight:1.55,display:"block"}}>✗ {iSt[c.t].err}</span>}</div>}
       </div>))}
     </div>
+    {dupWarn&&<div style={{marginTop:16,padding:"12px 16px",borderRadius:12,background:`${CO.red}0e`,border:`1.5px solid ${CO.red}45`}}>
+      <p style={{fontSize:12.5,fontWeight:700,color:CO.red,marginBottom:4}}>&#9888; The same export is loaded in two slots</p>
+      <p style={{fontSize:11.5,color:CO.muted,lineHeight:1.6}}>{dupWarn} hold identical data &mdash; same row count, same columns, same first row. Whatever is double-loaded is being counted twice. Re-export the missing report from Accommodate and import it in the right slot.</p>
+    </div>}
     {rawData.length>0&&<div style={{marginTop:24,background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,padding:18}}>
       <h3 style={{fontSize:13,fontWeight:600,marginBottom:8}}>Preview — Academic & Housing (first 8 rows)</h3>
       <div style={{overflow:"auto",maxHeight:220}}><table><thead><tr>{Object.keys(rawData[0]).slice(0,7).map(h=><th key={h}>{h}</th>)}</tr></thead>
@@ -751,7 +837,7 @@ function StudTab({rawData,testRoomData,testAccomData,apptData,incomingData,T,TER
   const bE=(sf)=>{const c={},s=new Set();(sf?rawData.filter(r=>normTerm(r["Semester (course)"])===sf):rawData).forEach(r=>{const id=sid(r),cl=normCL(r["Class Level"]),k=sf?`${id}_${cl}`:id;if(s.has(k))return;s.add(k);c[cl]=(c[cl]||0)+1});return c};
   const all=bE(null);
   const byTerm={};TERMS.forEach(t=>{byTerm[t.label]=bE(t.label)});
-  const lvls=[...new Set([...UG,"Graduate","Doctoral","Alumni","Exchange Program","Incominggr",...Object.keys(all)])];
+  const lvls=[...new Set([...UG,"Graduate","Incoming Graduate","Doctoral","Exchange Program","Alumni",...Object.keys(all)])];
   const tot=o=>Object.values(o).reduce((a,b)=>a+b,0);
 
   // Academic snapshot
@@ -1940,7 +2026,7 @@ function IncomingTab({incomingData,T,TERMS}){
 /* ═══ MAIN APP ═══ */
 function App(){
   /* ── localStorage persistence helpers ── */
-  const LS_KEYS={raw:"oars_raw",test:"oars_test",testAccom:"oars_testAccom",appt:"oars_appt",caseNotes:"oars_caseNotes",studentNotes:"oars_studentNotes",incoming:"oars_incoming",ay:"oars_ay",preSummer:"oars_preSummer",enrolledOnly:"oars_enrolledOnly"};
+  const LS_KEYS={raw:"oars_raw",test:"oars_test",testAccom:"oars_testAccom",appt:"oars_appt",caseNotes:"oars_caseNotes",studentNotes:"oars_studentNotes",incoming:"oars_incoming",ay:"oars_ay",preSummer:"oars_preSummer",enrolledOnly:"oars_enrolledOnly",classes:"oars_classes"};
   const lsLoad=(key)=>{try{const v=localStorage.getItem(key);return v?JSON.parse(v):null;}catch(e){return null;}};
   const lsSave=(key,val)=>{
     if(!val||!val.length){try{localStorage.removeItem(key);}catch(e){}return true;}
@@ -1967,6 +2053,9 @@ function App(){
   const[ay,setAY]=useState(()=>lsLoad(LS_KEYS.ay)||"2024-2025");const[tab,setTab]=useState("import");
   const[inclPreSummer,setInclPreSummer]=useState(()=>{const v=lsLoad(LS_KEYS.preSummer);return v===null?false:v});
   const[enrolledOnly,setEnrolledOnly]=useState(()=>{const v=lsLoad(LS_KEYS.enrolledOnly);return v===null?true:v});
+  // null = include every class level present in the file (no filtering).
+  const[classes,setClasses]=useState(()=>{const v=lsLoad(LS_KEYS.classes);return Array.isArray(v)?v:null});
+  const[clOpen,setClOpen]=useState(false);
 
   const ys=parseInt(ay.split("-")[0]),fS=`Fall ${ys}`,wS=`Winter ${ys}`,sS=`Spring ${ys+1}`,suS=`Summer ${ys+1}`,suPre=`Summer ${ys}`;
   const T={fS,wS,sS,suS,suPre};
@@ -1978,8 +2067,20 @@ function App(){
      actively enrolled coursework. ─────────────────────────────────────── */
   const enrollAvailable=hasEnrolledCol(rawData)||hasEnrolledCol(testAccomData);
   const notEnrolledCount=useMemo(()=>[...rawData,...testAccomData].filter(r=>hasEnrolledCol([r])&&!isEnrolled(r)).length,[rawData,testAccomData]);
-  const rawE=useMemo(()=>applyEnrolled(rawData,enrolledOnly),[rawData,enrolledOnly]);
-  const testAccomE=useMemo(()=>applyEnrolled(testAccomData,enrolledOnly),[testAccomData,enrolledOnly]);
+  /* Class-level census is built from the UNFILTERED data so the control
+     always shows what the file actually contains, including excluded levels. */
+  const classAvailable=hasClassCol(rawData)||hasClassCol(testAccomData);
+  const clCensus=useMemo(()=>classStudentCensus([...rawData,...testAccomData].filter(r=>r["Class Level"]!==undefined)),[rawData,testAccomData]);
+  const clLevels=useMemo(()=>{
+    const found=Object.keys(clCensus);
+    return [...CL_ORDER.filter(l=>found.includes(l)),...found.filter(l=>!CL_ORDER.includes(l)).sort()];
+  },[clCensus]);
+  const effClasses=useMemo(()=>classes===null?clLevels:classes,[classes,clLevels]);
+  const excludedStudents=useMemo(()=>clLevels.filter(l=>!effClasses.includes(l)).reduce((a,l)=>a+(clCensus[l]||0),0),[clLevels,effClasses,clCensus]);
+  const excludedLevels=useMemo(()=>clLevels.filter(l=>!effClasses.includes(l)&&clCensus[l]),[clLevels,effClasses,clCensus]);
+
+  const rawE=useMemo(()=>applyEnrolled(applyClass(rawData,classes),enrolledOnly),[rawData,classes,enrolledOnly]);
+  const testAccomE=useMemo(()=>applyEnrolled(applyClass(testAccomData,classes),enrolledOnly),[testAccomData,classes,enrolledOnly]);
 
   /* ── Leading-summer detection ─────────────────────────────────────────
      Summer {ys} (e.g. Summer 2025) sits BEFORE the fall term. Some exports
@@ -2058,6 +2159,7 @@ function App(){
   useEffect(()=>{lsSave(LS_KEYS.ay,ay);},[ay]);
   useEffect(()=>{try{localStorage.setItem(LS_KEYS.preSummer,JSON.stringify(inclPreSummer))}catch(e){}},[inclPreSummer]);
   useEffect(()=>{try{localStorage.setItem(LS_KEYS.enrolledOnly,JSON.stringify(enrolledOnly))}catch(e){}},[enrolledOnly]);
+  useEffect(()=>{try{localStorage.setItem(LS_KEYS.classes,JSON.stringify(classes))}catch(e){}},[classes]);
 
   // Pre-compute exec stats after any data change — runs in background after render
   useEffect(()=>{
@@ -2143,6 +2245,31 @@ function App(){
         <label style={{fontSize:12.5,color:CO.muted}}>Academic Year:</label>
         <select value={ay} onChange={e=>setAY(e.target.value)} style={{background:CO.bg,color:CO.text,border:`1.5px solid ${CO.border}`,borderRadius:8,padding:"7px 14px",fontSize:14,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>
           {["2019-2020","2020-2021","2021-2022","2022-2023","2023-2024","2024-2025","2025-2026","2026-2027","2027-2028","2028-2029","2029-2030","2030-2031","2031-2032","2032-2033"].map(y=><option key={y} value={y}>{y}</option>)}</select>
+        {classAvailable&&<div style={{position:"relative"}}>
+          <button onClick={()=>setClOpen(o=>!o)} title="Which class levels to include" style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",padding:"5px 12px",borderRadius:24,background:excludedStudents?`${CO.purple}20`:"transparent",border:`1.5px solid ${excludedStudents?CO.purple:CO.border}`,color:excludedStudents?CO.purple:CO.muted,fontSize:12,fontWeight:600,fontFamily:"inherit",whiteSpace:"nowrap"}}>
+            Class levels: {effClasses.filter(c=>clCensus[c]).length}/{clLevels.length}
+            {excludedStudents>0&&<span style={{fontSize:10.5,color:CO.dim,fontFamily:"'JetBrains Mono',monospace"}}>&minus;{excludedStudents.toLocaleString()}</span>}
+            <span style={{fontSize:9}}>{clOpen?"\u25B2":"\u25BC"}</span>
+          </button>
+          {clOpen&&<>
+            <div onClick={()=>setClOpen(false)} style={{position:"fixed",inset:0,zIndex:200}}/>
+            <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,zIndex:201,background:CO.card,border:`1.5px solid ${CO.border}`,borderRadius:12,padding:14,minWidth:290,boxShadow:"0 12px 40px rgba(0,0,0,.5)"}}>
+              <p style={{fontSize:11,color:CO.dim,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10,fontWeight:600}}>Include class levels</p>
+              {clLevels.map(l=>(
+                <label key={l} style={{display:"flex",alignItems:"center",gap:9,padding:"5px 0",cursor:"pointer"}}>
+                  <input type="checkbox" checked={effClasses.includes(l)} onChange={e=>setClasses(e.target.checked?[...effClasses,l]:effClasses.filter(x=>x!==l))} style={{accentColor:CO.accent,cursor:"pointer",width:14,height:14}}/>
+                  <span style={{fontSize:13,color:effClasses.includes(l)?CO.text:CO.dim,flex:1}}>{l}</span>
+                  <span style={{fontSize:11,color:CO.muted,fontFamily:"'JetBrains Mono',monospace"}}>{(clCensus[l]||0).toLocaleString()}</span>
+                </label>
+              ))}
+              <div style={{display:"flex",gap:8,marginTop:12,paddingTop:10,borderTop:`1px solid ${CO.border}`}}>
+                <button className="btn btn-outline" onClick={()=>setClasses(null)} style={{padding:"5px 12px",fontSize:11.5,flex:1}}>All</button>
+                <button className="btn btn-outline" onClick={()=>setClasses(CL_DEFAULT.filter(l=>clLevels.includes(l)))} style={{padding:"5px 12px",fontSize:11.5,flex:1}}>Degree-seeking 5</button>
+              </div>
+              <p style={{fontSize:10.5,color:CO.dim,marginTop:10,lineHeight:1.55}}>All levels found in the file are included by default. Counts are unique students. Class Level is a snapshot from the export date, not the level held during each term.</p>
+            </div>
+          </>}
+        </div>}
         {preSummerAvailable&&<label title={`${preSummerCount.toLocaleString()} records fall in ${suPre}, the summer term before ${fS}.`} style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",padding:"5px 12px",borderRadius:24,background:showPreSummer?"#e0705a20":"transparent",border:`1.5px solid ${showPreSummer?"#e0705a":CO.border}`}}>
           <input type="checkbox" checked={inclPreSummer} onChange={e=>setInclPreSummer(e.target.checked)} style={{accentColor:"#e0705a",cursor:"pointer",width:14,height:14}}/>
           <span style={{fontSize:12,fontWeight:600,color:showPreSummer?"#e0705a":CO.muted,whiteSpace:"nowrap"}}>Include {suPre}</span>
@@ -2163,6 +2290,9 @@ function App(){
           <p style={{fontSize:11.5,color:CO.muted,lineHeight:1.6}}>1. Import data<br/>2. Review tabs<br/>3. <strong style={{color:CO.accent}}>Generate report</strong></p></div>
       </nav>
       <main style={{flex:1,padding:28,overflow:"auto"}}>
+        {excludedLevels.length>0&&tab!=="import"&&<div style={{marginBottom:12,padding:"10px 16px",borderRadius:10,background:`${CO.purple}0e`,border:`1px solid ${CO.purple}35`,fontSize:12,color:CO.muted}}>
+          <strong style={{color:CO.purple}}>{excludedStudents.toLocaleString()} students</strong> excluded by the class-level filter: {excludedLevels.map(l=>`${l} (${(clCensus[l]||0).toLocaleString()})`).join(", ")}.
+        </div>}
         {totalExcluded>0&&tab!=="import"&&<div style={{marginBottom:16,padding:"10px 16px",borderRadius:10,background:`${CO.yellow}0e`,border:`1px solid ${CO.yellow}35`,fontSize:12,color:CO.muted}}>
           <strong style={{color:CO.yellow}}>{totalExcluded.toLocaleString()} records</strong> fall outside {ay} and are excluded from every figure below.{preSummerAvailable&&!inclPreSummer?` ${preSummerCount.toLocaleString()} of them are ${suPre} — use the toggle above to include that term.`:""}
         </div>}
