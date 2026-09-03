@@ -1029,6 +1029,109 @@ function StudTab({rawData,testRoomData,testAccomData,apptData,incomingData,T,TER
     </div>
   </div>);
 }
+/* ═══════════════════════════════════════════════════════════════════
+   QUALIFIED STUDENTS TAB — one student, one count, across BOTH
+   academic and housing accommodations. "Qualified" = approved for at
+   least one accommodation of either kind. Split by student level,
+   with Doctoral and Incoming Graduate rolled into Graduate.
+   ═══════════════════════════════════════════════════════════════════ */
+function qualifiedStats(rows,TERMS){
+  const sid=r=>r["Student ID"]||r["Name"];
+  const per={};
+  rows.forEach(r=>{
+    const a=r["Requested Accommodation"]||"";if(!a)return;
+    const id=sid(r);const ap=(r["Approved"]||"").toLowerCase()==="approved";
+    if(!per[id])per[id]={lvl:normCL(r["Class Level"])||CL_BLANK,grp:levelGroup(r),aA:false,hA:false,aR:false,hR:false,tA:new Set(),tR:new Set()};
+    const p=per[id];const t=normTerm(r["Semester (course)"]);
+    p.tR.add(t);
+    if(isH(a)){p.hR=true;if(ap)p.hA=true}else{p.aR=true;if(ap)p.aA=true}
+    if(ap)p.tA.add(t);
+  });
+  const S=()=>({q:new Set(),req:new Set(),acadOnly:new Set(),housOnly:new Set(),both:new Set(),qByTerm:{},rByTerm:{}});
+  const byGrp={},byLvl={};
+  const bump=(m,k,id,p)=>{
+    if(!m[k])m[k]=S();const x=m[k];
+    x.req.add(id);
+    const q=p.aA||p.hA;
+    if(q){x.q.add(id);
+      if(p.aA&&p.hA)x.both.add(id);else if(p.aA)x.acadOnly.add(id);else x.housOnly.add(id);}
+    p.tR.forEach(t=>{(x.rByTerm[t]=x.rByTerm[t]||new Set()).add(id)});
+    p.tA.forEach(t=>{(x.qByTerm[t]=x.qByTerm[t]||new Set()).add(id)});
+  };
+  Object.entries(per).forEach(([id,p])=>{bump(byGrp,p.grp,id,p);bump(byLvl,p.lvl,id,p);bump(byGrp,"__all",id,p);});
+  const ugGrad=S();
+  ["Undergraduate","Graduate"].forEach(g=>{const x=byGrp[g];if(!x)return;
+    ["q","req","acadOnly","housOnly","both"].forEach(k=>x[k].forEach(v=>ugGrad[k].add(v)));
+    Object.entries(x.qByTerm).forEach(([t,v])=>{(ugGrad.qByTerm[t]=ugGrad.qByTerm[t]||new Set());v.forEach(i=>ugGrad.qByTerm[t].add(i))});
+    Object.entries(x.rByTerm).forEach(([t,v])=>{(ugGrad.rByTerm[t]=ugGrad.rByTerm[t]||new Set());v.forEach(i=>ugGrad.rByTerm[t].add(i))});
+  });
+  byGrp["__ugGrad"]=ugGrad;
+  return{byGrp,byLvl,students:Object.keys(per).length};
+}
+
+function QualifiedTab({rawData,census,TERMS}){
+  if(!rawData.length)return<Empty msg="Import the Academic & Housing Accommodations file to view qualified students."/>;
+  const st=useMemo(()=>qualifiedStats(rawData,TERMS),[rawData,TERMS]);
+  const G=st.byGrp,L=st.byLvl;
+  const ug=G["Undergraduate"],gr=G["Graduate"],ugg=G["__ugGrad"],all=G["__all"];
+  const n=x=>x?x.q.size:0,nr=x=>x?x.req.size:0;
+  const others=Object.keys(G).filter(k=>!k.startsWith("__")&&k!=="Undergraduate"&&k!=="Graduate").sort((a,b)=>n(G[b])-n(G[a]));
+  const lvlOrder=[...UG_SET,...GRAD_SET];
+  const lvls=[...lvlOrder.filter(l=>L[l]),...Object.keys(L).filter(l=>!lvlOrder.includes(l)).sort()];
+  const COLS={Undergraduate:CO.accent,Graduate:CO.purple};
+  const Big=({label,val,sub,color,strong})=>(
+    <div style={{background:strong?`${color}0e`:CO.card,borderRadius:14,border:`1.5px solid ${color}${strong?"50":"30"}`,padding:"18px 20px"}}>
+      <p style={{fontSize:11,color,fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>{label}</p>
+      <p style={{fontSize:strong?36:30,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color,lineHeight:1}}>{val.toLocaleString()}</p>
+      {sub&&<p style={{fontSize:11,color:CO.muted,marginTop:8}}>{sub}</p>}
+    </div>);
+  const R=({l,x,strong,color})=>(
+    <tr style={strong?{background:`${color||CO.green}0c`}:undefined}>
+      <td style={{fontWeight:strong?700:500,color:strong?(color||CO.green):CO.text}}>{l}</td>
+      <td style={{textAlign:"right",fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:strong?(color||CO.green):CO.text}}>{n(x).toLocaleString()}</td>
+      <td style={{textAlign:"right",color:CO.muted}}>{nr(x).toLocaleString()}</td>
+      <td style={{textAlign:"right",color:CO.muted}}>{x?(x.acadOnly.size+x.both.size).toLocaleString():0}</td>
+      <td style={{textAlign:"right",color:CO.muted}}>{x?(x.housOnly.size+x.both.size).toLocaleString():0}</td>
+      <td style={{textAlign:"right",color:CO.dim,fontSize:12}}>{x?x.both.size.toLocaleString():0}</td>
+      {TERMS.map(t=><td key={t.label} style={{textAlign:"right",color:t.col,fontSize:12}}>{x&&x.qByTerm[t.label]?x.qByTerm[t.label].size.toLocaleString():"—"}</td>)}
+    </tr>);
+  return(<div className="fade-up">
+    <h2 style={{fontSize:26,fontWeight:800,marginBottom:6}}>Qualified Students</h2>
+    <p style={{fontSize:13,color:CO.muted,marginBottom:12}}>Unique students approved for <strong style={{color:CO.text}}>at least one accommodation of any kind</strong> &mdash; academic or housing. A student approved for both counts once. Graduate includes Doctoral and Incoming Graduate.</p>
+    <TermCoverage census={census} terms={TERMS} label="accommodation records"/>
+    <IdentityNote basis="student name" detail="Deduplicated across academic and housing. This export has no student ID column, so two students sharing a name would merge into one."/>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:22}}>
+      <Big label="Undergraduate" val={n(ug)} color={CO.accent} sub={`${nr(ug).toLocaleString()} requested · Fr / So / Jr / Sr`}/>
+      <Big label="Graduate" val={n(gr)} color={CO.purple} sub={`${nr(gr).toLocaleString()} requested · Grad / Doctoral / Incoming`}/>
+      <Big label="Undergrad + Grad" val={n(ugg)} color={CO.green} strong sub={`${nr(ugg).toLocaleString()} requested · deduplicated`}/>
+      <Big label="All levels in file" val={n(all)} color={CO.yellow} sub={others.length?`includes ${others.map(o=>`${o} (${n(G[o])})`).join(", ")}`:"no other levels present"}/>
+    </div>
+
+    <p style={{fontSize:12,color:"#b0b8d8",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>By Student Level</p>
+    <div style={{background:CO.card,borderRadius:14,border:`1px solid ${CO.border}`,overflow:"hidden",marginBottom:18}}>
+      <div style={{overflow:"auto"}}>
+      <table><thead><tr>
+        <th>Level</th><th style={{textAlign:"right"}}>Qualified</th><th style={{textAlign:"right"}}>Requested</th>
+        <th style={{textAlign:"right"}}>Academic</th><th style={{textAlign:"right"}}>Housing</th><th style={{textAlign:"right"}}>Both</th>
+        {TERMS.map(t=><th key={t.label} style={{textAlign:"right",color:t.col}}>{shortTerm(t.label,TERMS)}</th>)}
+      </tr></thead>
+      <tbody>
+        {lvls.filter(l=>UG_SET.includes(l)).map(l=><R key={l} l={l} x={L[l]}/>)}
+        <R l="Undergraduate subtotal" x={ug} strong color={CO.accent}/>
+        {lvls.filter(l=>GRAD_SET.includes(l)).map(l=><R key={l} l={l} x={L[l]}/>)}
+        <R l="Graduate subtotal" x={gr} strong color={CO.purple}/>
+        <R l="UNDERGRAD + GRAD" x={ugg} strong color={CO.green}/>
+        {lvls.filter(l=>!UG_SET.includes(l)&&!GRAD_SET.includes(l)).map(l=><R key={l} l={l} x={L[l]}/>)}
+        <R l="ALL LEVELS" x={all} strong color={CO.yellow}/>
+      </tbody></table></div>
+    </div>
+    <p style={{fontSize:11,color:CO.dim,lineHeight:1.6}}>
+      <strong style={{color:CO.muted}}>Qualified</strong> = approved for &ge;1 accommodation. <strong style={{color:CO.muted}}>Academic</strong> / <strong style={{color:CO.muted}}>Housing</strong> = qualified in that category (a student can be in both, so those two columns overlap by the <strong style={{color:CO.muted}}>Both</strong> figure). Term columns show students qualified in that term. Subtotals are deduplicated unions, not sums. Uses the same Enrolled, class-level and summer settings as every other tab.
+    </p>
+  </div>);
+}
+
 function ExpTab({rawData,T,TERMS}){if(!rawData.length)return<Empty msg="Import data first."/>;
   const shape=a=>{const o={Accommodation:a.name};TERMS.forEach(t=>{o[`${t.label} Approved`]=a[t.key+"Approved"];o[`${t.label} Denied`]=a[t.key+"Denied"];});o["Total Unique"]=a.totalUnique;o["Year Approved"]=a.calApproved;o["Year Denied"]=a.calDenied;return o};
   const eA=()=>dlXLSX(bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),TERMS,null).map(shape),"Academic_Report.xlsx");
@@ -2298,6 +2401,7 @@ function App(){
     {id:"summary",label:"Executive Summary",icon:"◈"},
     {id:"academic",label:"Academic Accomm.",icon:"◎"},
     {id:"housing",label:"Housing Report",icon:"⌂"},
+    {id:"qualified",label:"Qualified Students",icon:"✓"},
     {id:"testroom",label:"Test Room Bookings",icon:"✎"},
     {id:"appointments",label:"Direct Services",icon:"🤝"},
     {id:"indirect",label:"Indirect Contacts",icon:"📬"},
@@ -2371,6 +2475,7 @@ function App(){
         {tab==="summary"&&<ExecTab execStats={execStats} TERMS={TERMS} fS={fS} sS={sS} hasTest={bookS.rows.length>0} hasAppt={apptS.rows.length>0} hasNotes={cnS.rows.length>0||snS.rows.length>0} hasIncoming={incomingData.length>0}/>}
         {tab==="academic"&&<AcadTab rawData={rawF} census={acadS.census} T={T} TERMS={TERMS}/>}
         {tab==="housing"&&<HousingTab rawData={rawF} census={acadS.census} T={T} TERMS={TERMS}/>}
+        {tab==="qualified"&&<QualifiedTab rawData={rawF} census={acadS.census} TERMS={TERMS}/>}
         {tab==="testroom"&&<TestTab testRoomData={bookS.rows} bookCensus={bookS.census} testAccomData={testAccomF} accomCensus={taS.census} T={T} TERMS={TERMS}/>}
         {tab==="appointments"&&<DirectServicesTab apptData={apptS.rows} census={apptS.census} T={T} TERMS={TERMS}/>}
         {tab==="indirect"&&<IndirectContactsTab caseNotesData={cnS.rows} studentNotesData={snS.rows} census={{...cnS.census}} census2={{...snS.census}} T={T} TERMS={TERMS}/>}
