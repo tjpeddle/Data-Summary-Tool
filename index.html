@@ -183,6 +183,71 @@ function applyClass(rows,enabled){
   return rows.filter(r=>set.has(clOf(r)));
 }
 
+/* ═══ STUDENT LEVEL — undergraduate vs graduate rollup ═══ */
+const UG_SET=["Freshman","Sophomore","Junior","Senior"];
+const GRAD_SET=["Graduate","Incoming Graduate","Doctoral"];
+function levelGroup(r){
+  const c=normCL(r["Class Level"]);
+  if(UG_SET.includes(c))return"Undergraduate";
+  if(GRAD_SET.includes(c))return"Graduate";
+  return c||CL_BLANK;
+}
+/* Unique students approved / interacting, split by student level. */
+function levelSplit(rows){
+  const m={};
+  rows.forEach(r=>{
+    const g=levelGroup(r),id=r["Student ID"]||r["Name"];
+    if(!m[g])m[g]={group:g,appr:new Set(),inter:new Set()};
+    m[g].inter.add(id);
+    if((r["Approved"]||"").toLowerCase()==="approved")m[g].appr.add(id);
+  });
+  const order=["Undergraduate","Graduate"];
+  const out=Object.values(m).map(v=>({group:v.group,approved:v.appr.size,interacted:v.inter.size,_a:v.appr,_i:v.inter}));
+  out.sort((a,b)=>{const ia=order.indexOf(a.group),ib=order.indexOf(b.group);
+    return (ia<0?9:ia)-(ib<0?9:ib)||b.approved-a.approved});
+  return out;
+}
+
+function LevelBreakdown({rows,color=CO.accent,filter,onFilter}){
+  const split=useMemo(()=>levelSplit(rows),[rows]);
+  if(!split.length)return null;
+  const core=split.filter(x=>x.group==="Undergraduate"||x.group==="Graduate");
+  const other=split.filter(x=>x.group!=="Undergraduate"&&x.group!=="Graduate");
+  const sub={a:new Set(),i:new Set()};
+  core.forEach(x=>{x._a.forEach(v=>sub.a.add(v));x._i.forEach(v=>sub.i.add(v))});
+  const COLS={Undergraduate:CO.accent,Graduate:CO.purple};
+  const Chip=({id,label})=>(
+    <button onClick={()=>onFilter(id)} className={`chip${filter===id?" active":""}`} style={{fontSize:12}}>{label}</button>);
+  return(<div style={{marginBottom:18}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:10}}>
+      <p style={{fontSize:12,color:"#b0b8d8",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em"}}>Qualified by Student Level</p>
+      <div style={{display:"flex",gap:6}}>
+        <Chip id="all" label="All levels"/><Chip id="Undergraduate" label="Undergraduate only"/><Chip id="Graduate" label="Graduate only"/>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${core.length+1+other.length},1fr)`,gap:12}}>
+      {core.map(x=>(
+        <div key={x.group} style={{background:CO.card,borderRadius:12,border:`1.5px solid ${COLS[x.group]}35`,padding:"14px 16px"}}>
+          <p style={{fontSize:10.5,color:COLS[x.group],fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{x.group}</p>
+          <p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:COLS[x.group]}}>{x.approved.toLocaleString()}</p>
+          <p style={{fontSize:10.5,color:CO.dim,marginTop:2}}>qualified &middot; {x.interacted.toLocaleString()} requested</p>
+        </div>))}
+      <div style={{background:`${CO.green}0c`,borderRadius:12,border:`1.5px solid ${CO.green}40`,padding:"14px 16px"}}>
+        <p style={{fontSize:10.5,color:CO.green,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>UG + Grad</p>
+        <p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.green}}>{sub.a.size.toLocaleString()}</p>
+        <p style={{fontSize:10.5,color:CO.dim,marginTop:2}}>qualified &middot; {sub.i.size.toLocaleString()} requested</p>
+      </div>
+      {other.map(x=>(
+        <div key={x.group} style={{background:CO.card,borderRadius:12,border:`1px solid ${CO.border}`,padding:"14px 16px"}}>
+          <p style={{fontSize:10.5,color:CO.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{x.group}</p>
+          <p style={{fontSize:28,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",color:CO.muted}}>{x.approved.toLocaleString()}</p>
+          <p style={{fontSize:10.5,color:CO.dim,marginTop:2}}>qualified &middot; {x.interacted.toLocaleString()} requested</p>
+        </div>))}
+    </div>
+    <p style={{fontSize:10.5,color:CO.dim,marginTop:8}}>&ldquo;Qualified&rdquo; = approved for at least one accommodation in this category. Undergraduate = Freshman/Sophomore/Junior/Senior; Graduate = Graduate/Incoming Graduate/Doctoral. A student counts once per level, so UG + Grad is a deduplicated union.</p>
+  </div>);
+}
+
 /* Enrolled flag — files that carry an "Enrolled" column mark each course row Yes/No. */
 function hasEnrolledCol(rows){return rows.length>0&&Object.keys(rows[0]).some(k=>k.trim().toLowerCase()==="enrolled")}
 function isEnrolled(r){const v=r["Enrolled"];return v===undefined||v===null||v===""?true:String(v).trim().toLowerCase()!=="no"}
@@ -692,9 +757,11 @@ function useTermCounts(rows,terms,sidFn,field="Semester (course)"){
 
 function AcadTab({rawData,census,T,TERMS}){
   const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);
-  const s=useMemo(()=>bSum(rawData.filter(r=>isA(r["Requested Accommodation"])),TERMS,null),[rawData,T]);
+  const[lvl,setLvl]=useState("all");
   const sid=r=>r["Student ID"]||r["Name"];
-  const acadRows=useMemo(()=>rawData.filter(r=>isA(r["Requested Accommodation"])),[rawData]);
+  const base=useMemo(()=>rawData.filter(r=>isA(r["Requested Accommodation"])),[rawData]);
+  const acadRows=useMemo(()=>lvl==="all"?base:base.filter(r=>levelGroup(r)===lvl),[base,lvl]);
+  const s=useMemo(()=>bSum(acadRows,TERMS,null),[acadRows,TERMS]);
   const tc=useTermCounts(acadRows,TERMS,sid);
   const apprAll=useMemo(()=>new Set(acadRows.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").map(sid)).size,[acadRows]);
   const intAll=useMemo(()=>new Set(acadRows.map(sid)).size,[acadRows]);
@@ -703,7 +770,8 @@ function AcadTab({rawData,census,T,TERMS}){
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><h2 style={{fontSize:26,fontWeight:800}}>Academic Accommodations</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div>
     <TermCoverage census={census} terms={TERMS} label="accommodation records"/>
     <IdentityNote basis="student name" detail="This export has no student ID column, so two students sharing a name would merge into one."/>
-    <p style={{fontSize:13,color:CO.accent,marginBottom:12}}>Click any row to view a detailed summary ›</p>
+    <LevelBreakdown rows={base} color={CO.accent} filter={lvl} onFilter={setLvl}/>
+    <p style={{fontSize:13,color:CO.accent,marginBottom:12}}>{lvl!=="all"&&<span style={{color:CO.yellow}}>Showing <strong>{lvl}</strong> students only — choose &ldquo;All levels&rdquo; above to reset. </span>}Click any row to view a detailed summary ›</p>
     <AT summary={s} vm={vm} terms={TERMS} onRowClick={row=>setPanel({title:"Academic Accommodation",type:"accommodation",row})}/>
     <TotalFooter approvedAll={apprAll} interactAll={intAll} color={CO.accent}
       approvedByTerm={tc.map(t=>({label:t.label,val:t.approved,col:t.col}))}
@@ -713,9 +781,11 @@ function AcadTab({rawData,census,T,TERMS}){
 
 function HousingTab({rawData,census,T,TERMS}){
   const[vm,sVM]=useState("semester");const[panel,setPanel]=useState(null);
-  const s=useMemo(()=>bSum(rawData.filter(r=>isH(r["Requested Accommodation"])),TERMS,cHN),[rawData,T]);
+  const[lvl,setLvl]=useState("all");
   const sid=r=>r["Student ID"]||r["Name"];
-  const housRows=useMemo(()=>rawData.filter(r=>isH(r["Requested Accommodation"])),[rawData]);
+  const hbase=useMemo(()=>rawData.filter(r=>isH(r["Requested Accommodation"])),[rawData]);
+  const housRows=useMemo(()=>lvl==="all"?hbase:hbase.filter(r=>levelGroup(r)===lvl),[hbase,lvl]);
+  const s=useMemo(()=>bSum(housRows,TERMS,cHN),[housRows,TERMS]);
   const tc=useTermCounts(housRows,TERMS,sid);
   const apprAll=useMemo(()=>new Set(housRows.filter(r=>(r["Approved"]||"").toLowerCase()==="approved").map(sid)).size,[housRows]);
   const intAll=useMemo(()=>new Set(housRows.map(sid)).size,[housRows]);
@@ -724,7 +794,8 @@ function HousingTab({rawData,census,T,TERMS}){
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><h2 style={{fontSize:26,fontWeight:800}}>Housing Report</h2><div style={{display:"flex",gap:8}}><button className={`btn ${vm==="semester"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("semester")}>Semester</button><button className={`btn ${vm==="calendar"?"btn-primary":"btn-outline"}`} onClick={()=>sVM("calendar")}>Year</button></div></div>
     <TermCoverage census={census} terms={TERMS} label="housing records"/>
     <IdentityNote basis="student name" color={CO.purple} detail="This export has no student ID column, so two students sharing a name would merge into one."/>
-    <p style={{fontSize:13,color:CO.accent,marginBottom:12}}>Click any row to view a detailed summary ›</p>
+    <LevelBreakdown rows={hbase} color={CO.purple} filter={lvl} onFilter={setLvl}/>
+    <p style={{fontSize:13,color:CO.accent,marginBottom:12}}>{lvl!=="all"&&<span style={{color:CO.yellow}}>Showing <strong>{lvl}</strong> students only — choose &ldquo;All levels&rdquo; above to reset. </span>}Click any row to view a detailed summary ›</p>
     <AT summary={s} vm={vm} terms={TERMS} onRowClick={row=>setPanel({title:"Housing Accommodation",type:"accommodation",row})}/>
     <TotalFooter approvedAll={apprAll} interactAll={intAll} color={CO.purple}
       approvedByTerm={tc.map(t=>({label:t.label,val:t.approved,col:t.col}))}
